@@ -3,7 +3,7 @@ extends RefCounted
 ## Looks up a named Ability perk (by PerkDefinition.id) wherever it's currently placed on the
 ## board and activates it — the "fixed named abilities" model: Jump/Normal Attack/Special
 ## Attack/Dash always mean that specific perk, regardless of which of the 5 Ability slots it's
-## in (contrast Shield, which is never looked up this way — see PlayerCharacter). Doesn't touch
+## in (Shield, the Block button, is looked up the same way for its parry chain). Doesn't touch
 ## input at all; game_gui.gd's _unhandled_input decides *when* to call trigger().
 
 var ability_activator := AbilityActivator.new()

@@ -53,6 +53,7 @@ PerkDefinition (Resource)          — immutable template: id, display_name, des
   ├── EchoPerkDefinition            — + echoes (int)
   ├── ChainPerkDefinition           — + chains (int)
   ├── ShieldPerkDefinition          — no new fields; reuses base_damage as a shield amount
+  ├── BlockPerkDefinition           — the Block/Parry ability; reuses base_damage as max Guard
   │                                    instead of combat damage (see §4) — apply_effect() is a
   │                                    no-op override so it can never leak into combat math
   └── MemoryPerkDefinition          — same reuse-base_damage pattern as Shield, this time as a
@@ -266,7 +267,7 @@ fixed `PerkDefinition.id`s — `jump`→`jump`, `dash`→`dash`, `attack_normal`
 `attack_special`→`special_attack`. This is the "fixed named abilities" model: an action always
 means that specific perk, wherever it's currently placed among the 5 Ability slots (not a
 fixed board position) — contrast Shield, which isn't in this map at all since it's a passive
-stat, never a triggered action (see `PlayerCharacter.recompute_shield_from_board()`, which sums
+Core perk (a physical shield, Thomas), never a triggered action (see `PlayerCharacter.recompute_shield_from_board()`, which sums
 `get_scaled_base_damage()` — read as a shield amount, not damage — across every placed Ability
 perk with `id == "shield"`).
 - `_setup_input_actions()` registers each action on Godot's `InputMap` singleton *at runtime*

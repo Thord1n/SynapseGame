@@ -2,7 +2,8 @@ extends Node2D
 ## Top-level scene: a minimal 2D game view (World) plus the perk-board GUI as a Tab-toggled
 ## menu layered on top (MenuLayer/GameGui), plus an always-on-screen combat log (HudLayer) that
 ## catches GameGui's ability_triggered signal — GameGui's own status_label lives inside a panel
-## that's hidden exactly when a trigger can happen, so it can't be the destination for that.
+## that's usually closed when a trigger happens, so it can't be the destination for that. The
+## menu never pauses the game or blocks the player: the grid is live (Thomas).
 
 const TOGGLE_ACTION := &"toggle_menu"
 ## Entries, not lines — each one is now potentially multi-line (action + per-Modifier
@@ -15,7 +16,12 @@ const COMBAT_LOG_MAX_ENTRIES := 3
 @onready var player: PlayerController = $World/Player
 @onready var player_status_label: Label = $HudLayer/PlayerStatusLabel
 
+## How long the "missing perk" cue stays on screen.
+const MISSING_CUE_SECONDS := 1.2
+
 var _combat_log_lines: Array[String] = []
+var _missing_cue: Label
+var _missing_cue_timer: SceneTreeTimer
 
 func _ready() -> void:
 	_register_toggle_action()
@@ -24,7 +30,6 @@ func _ready() -> void:
 	# Ability triggers now deal damage to the persistent Enemy in the world instead of a
 	# throwaway target that reset every press — see GameGui.combat_target's own doc comment.
 	game_gui.combat_target = enemy.dummy_target
-	player.menu = game_gui
 	_wire_player_hud()
 
 ## HP/Guard readout plus a combat-log line for each defensive outcome, so block/parry/
@@ -38,7 +43,27 @@ func _wire_player_hud() -> void:
 	player.hurt.connect(func(hit: Hit): _on_ability_triggered("Hit for %s%s" % [PerkDefinition.format_number(hit.damage), " (unblockable)" if hit.kind == Hit.Kind.UNBLOCKABLE else ""]))
 	player.guard_broken.connect(func(): _on_ability_triggered("GUARD BROKEN"))
 	player.died.connect(func(): _on_ability_triggered("Died, back to spawn"))
+	player.ability_missing.connect(_show_missing_cue)
 	_refresh_player_status()
+
+## Pressing a move whose perk isn't on the grid flashes a short cue naming the perk (Thomas:
+## only when the action is pressed, no permanent marker).
+func _show_missing_cue(ability_id: StringName) -> void:
+	if _missing_cue == null:
+		_missing_cue = Label.new()
+		_missing_cue.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+		_missing_cue.offset_top = 120.0
+		_missing_cue.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		_missing_cue.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_missing_cue.add_theme_color_override("font_color", Color(1.0, 0.55, 0.4))
+		$HudLayer.add_child(_missing_cue)
+	_missing_cue.text = "No %s perk on the grid" % String(ability_id).capitalize()
+	_missing_cue.visible = true
+	var timer := get_tree().create_timer(MISSING_CUE_SECONDS)
+	_missing_cue_timer = timer
+	timer.timeout.connect(func():
+		if _missing_cue_timer == timer:
+			_missing_cue.visible = false)
 
 func _refresh_player_status() -> void:
 	player_status_label.text = "HP %d / %d\nGuard %d / %d" % [
@@ -60,8 +85,7 @@ func _register_toggle_action() -> void:
 	joy.button_index = JOY_BUTTON_START
 	InputMap.action_add_event(TOGGLE_ACTION, joy)
 
-## Hiding GameGui is the only state this needs to track — see the `visible` guard in
-## game_gui.gd's _unhandled_input for the other half (why triggering only fires while closed).
+## Showing/hiding GameGui is the only state this needs to track. Nothing pauses while it's open.
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed(TOGGLE_ACTION):
 		game_gui.visible = not game_gui.visible

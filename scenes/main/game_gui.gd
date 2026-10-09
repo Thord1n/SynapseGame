@@ -26,8 +26,9 @@ const ABILITY_SLOT_POSITIONS: Array[Vector2i] = [
 const ABILITY_SLOT_BORDER := 3.0
 
 ## Fixed named abilities (see AbilityController): an input action always means this specific
-## perk id, wherever it's currently placed on the board — not a fixed board slot. Shield is
-## deliberately absent here; it's a passive stat read by PlayerCharacter, never triggered.
+## perk id, wherever it's currently placed on the board — not a fixed board slot. Block is
+## absent: PlayerController handles it, and its chain fires on a parry (TriggerRouter). Shield is
+## a passive stat read by PlayerCharacter, never triggered.
 ## Keys match project.godot's [input] section exactly (case-sensitive) — these are real,
 ## editor-configured Input Map actions now, not runtime-registered here (see _ready()).
 const ABILITY_ACTIONS := {
@@ -38,19 +39,19 @@ const ABILITY_ACTIONS := {
 }
 
 ## Emitted instead of writing ability-trigger results to status_label — this panel is a
-## Tab-toggled menu now (see main.gd) and is hidden exactly when a trigger can happen (see the
-## `visible` guard in _unhandled_input), so the result needs a destination that's on screen
-## regardless of menu state. main.gd's on-screen combat log is that destination.
+## Tab-toggled menu (see main.gd) and is usually closed when a trigger happens, so the result
+## needs a destination that's on screen regardless of menu state. main.gd's on-screen combat log is that destination.
 signal ability_triggered(text: String)
 
 ## Off by default so test scenes that instance game_gui.tscn on their own keep starting from a
 ## bare seeded inventory. main.tscn turns it on (see _apply_starting_loadout).
 @export var starting_loadout: bool = false
-const STARTING_MEMORY_LEVEL := 2 # 8 bytes: the four core moves plus room for a modifier or two
+const STARTING_MEMORY_LEVEL := 2 # 8 bytes: the five moves (1 byte each) leave 3 for modifiers
 const STARTING_ABILITIES := {
 	&"jump": Vector2i(2, 0),
 	&"normal_attack": Vector2i(2, 1),
-	&"guard": Vector2i(2, 3),
+	&"special_attack": Vector2i(2, 2),
+	&"block": Vector2i(2, 3),
 	&"dash": Vector2i(2, 4),
 }
 
@@ -59,6 +60,11 @@ const STARTING_ABILITIES := {
 ## combat_target. main.tscn turns this off: there, TriggerRouter fires each chain on the real
 ## gameplay event instead (the swing landing, a parry, dodging through a hit, takeoff).
 @export var trigger_on_keypress: bool = true
+
+## Size of the perk-board panels relative to their natural size (see _dock_panels).
+@export_range(0.3, 1.0) var panel_scale: float = 0.6
+## Distance from the screen's right edge, and from its top (leaves room for the HP/Guard readout).
+const PANEL_MARGIN := Vector2(16, 72)
 
 @onready var board: Board = $Board
 @onready var inventory: Inventory = $Inventory
@@ -77,6 +83,7 @@ var memory_slot_button: Button
 var status_label: Label
 var health_label: Label
 var shield_label: Label
+var guard_label: Label
 
 var tooltip_panel: PanelContainer
 var tooltip_name_label: Label
@@ -96,6 +103,7 @@ var ability_controller := AbilityController.new()
 ## world instead of resetting every trigger. See Enemy (scripts/combat/enemy.gd).
 var combat_target := DummyTarget.new()
 
+var _panels: Control
 var _board_buttons: Dictionary = {} # Vector2i -> Button
 ## {} when empty. Otherwise {"perk": InventoryPerk, "source": "inventory" or Vector2i}.
 var _held: Dictionary = {}
@@ -107,6 +115,9 @@ var _merge_max: int = 1
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# Full-screen but only the docked panels take clicks: a click anywhere else is a game input
+	# (Normal/Special Attack), since the grid stays open mid-fight.
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	board.initialize_shape(Board.rectangular_shape(BOARD_SIZE, BOARD_SIZE))
 	for pos in ABILITY_SLOT_POSITIONS:
 		board.set_cell_restriction(pos, PerkDefinition.PerkClass.ABILITY)
@@ -120,6 +131,7 @@ func _ready() -> void:
 	inventory.inventory_changed.connect(_refresh_ui)
 
 	player.recompute_shield_from_board(board)
+
 	_refresh_ui()
 
 ## Keeps the held-perk symbol snapped to the cursor. Driven by _process rather than input
@@ -154,14 +166,10 @@ func _input(event: InputEvent) -> void:
 ## for its own `pressed` (and the right-click handlers above mark theirs handled explicitly),
 ## so clicks spent managing the perk board never also trigger an ability — only input that
 ## reaches "the game" (a click that landed on nothing, or any keyboard/gamepad press) does.
-## The `visible` guard is what actually gates triggering on the menu being closed — main.gd
-## toggles this Control's visibility on Tab, and hiding it already stops board/inventory
-## Buttons from receiving clicks on their own (Godot skips hit-testing invisible Controls); this
-## is the one piece that doesn't stop on its own, since _unhandled_input fires regardless of
-## visibility. Triggering should only happen while the menu is CLOSED (visible == false) —
-## you're "in the game," not managing your loadout.
+## Not gated on the menu being open: the grid is live (Thomas), so the player keeps full control
+## while editing it and the game never pauses.
 func _unhandled_input(event: InputEvent) -> void:
-	if visible or not trigger_on_keypress:
+	if not trigger_on_keypress:
 		return
 	for action_name in ABILITY_ACTIONS:
 		if event.is_action_pressed(action_name):
@@ -222,7 +230,6 @@ func _resolve_orientation(definition: PerkDefinition, rotation_state: int) -> Di
 
 func _build_ui() -> void:
 	var root_hbox := HBoxContainer.new()
-	root_hbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root_hbox.add_theme_constant_override("separation", 16)
 	# Purely layout, no interaction of its own — left at the default mouse filter it'd swallow
 	# clicks that land in the gaps between panels, which now matters: those clicks are supposed
@@ -240,6 +247,27 @@ func _build_ui() -> void:
 	_build_tooltip()
 	_build_merge_popup()
 	_build_held_symbol() # added last so it draws above everything else
+
+	_panels = root_hbox
+	root_hbox.resized.connect(_dock_panels)
+	get_viewport().size_changed.connect(_dock_panels)
+	_dock_panels.call_deferred()
+
+## Where a popup goes for a cell: to its left, since the panels sit at the right edge.
+func _beside_panels(anchor: Control, popup: Control) -> Vector2:
+	var width := maxf(popup.size.x, popup.get_combined_minimum_size().x)
+	return anchor.global_position - Vector2(width + 8, 0)
+
+## The grid is live (Thomas): the fight keeps running while it's open, so the panels are drawn
+## at panel_scale and docked to the top-right corner, under the HP/Guard readout, instead of
+## covering the screen.
+func _dock_panels() -> void:
+	if _panels == null:
+		return
+	_panels.size = _panels.get_combined_minimum_size()
+	_panels.scale = Vector2.ONE * panel_scale
+	var viewport_size := get_viewport_rect().size
+	_panels.position = Vector2(viewport_size.x - _panels.size.x * panel_scale - PANEL_MARGIN.x, PANEL_MARGIN.y)
 
 ## A plain (non-Container) Control wrapper gives the cell a size fixed to CELL_SIZE
 ## regardless of the inner Button's content, so placing/clearing a perk never resizes
@@ -429,7 +457,7 @@ func _build_memory_panel() -> Control:
 
 	return vbox
 
-## Health/Shield readout plus the control scheme, so the Ability-perk-to-control wiring (see
+## Health/Shield/max Guard readout plus the control scheme, so the Ability-perk-to-control wiring (see
 ## ABILITY_ACTIONS/_unhandled_input) is discoverable without reading source.
 func _build_player_panel() -> Control:
 	var vbox := VBoxContainer.new()
@@ -451,8 +479,12 @@ func _build_player_panel() -> Control:
 	shield_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(shield_label)
 
+	guard_label = Label.new()
+	guard_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(guard_label)
+
 	var controls := Label.new()
-	controls.text = "\nControls\nLeft click: Normal Attack\nRight click: Special Attack\nSpace: Jump\nShift: Dash"
+	controls.text = "\nControls\nLeft click: Normal Attack\nRight click: Special Attack\nSpace: Jump\nShift: Dash\nQ: Block / Parry"
 	controls.add_theme_font_size_override("font_size", 11)
 	controls.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(controls)
@@ -571,7 +603,7 @@ func _seed_inventory() -> void:
 ## Abilities are perks and cost memory like any other, so with an empty board the player
 ## couldn't even move. This slots a Memory perk and pre-places the core moves (taken from the
 ## seeded inventory) down the Ability column, each outputting east so modifiers can chain to
-## the right. (2, 2) is left free for Special Attack.
+## the right.
 func _apply_starting_loadout() -> void:
 	var memory := _take_seeded(&"memory")
 	if memory:
@@ -652,7 +684,7 @@ func _open_merge_popup(stack: Array, anchor: Control) -> void:
 	_merge_count = 1
 	merge_count_label.text = str(_merge_count)
 	merge_popup.visible = true
-	merge_popup.global_position = anchor.global_position + Vector2(anchor.size.x + 8, 0)
+	merge_popup.global_position = _beside_panels(anchor, merge_popup)
 
 ## Wraps instead of clamping: at 1, "-" goes to _merge_max; at _merge_max, "+" goes to 1. delta
 ## is always exactly +-1 (one button press), so a plain step-and-wrap is enough — no need for
@@ -887,6 +919,7 @@ func _refresh_memory_slot() -> void:
 func _refresh_player_panel() -> void:
 	health_label.text = "Health: %d / %d" % [player.current_health, player.max_health]
 	shield_label.text = "Shield: %d" % player.shield
+	guard_label.text = "Max Guard: %d" % BlockPerkDefinition.max_guard_on(board)
 
 func _refresh_held_symbol() -> void:
 	if _held.is_empty():
@@ -1012,7 +1045,7 @@ func _show_tooltip(perk: InventoryPerk, anchor: Control, extra_text: String = ""
 	tooltip_name_label.text = "%s (Lv%d)" % [perk.definition.display_name, perk.level]
 	tooltip_desc_label.text = perk.definition.description + perk.definition.get_tooltip_extra(perk.level) + extra_text
 	tooltip_panel.visible = true
-	tooltip_panel.global_position = anchor.global_position + Vector2(anchor.size.x + 8, 0)
+	tooltip_panel.global_position = _beside_panels(anchor, tooltip_panel)
 
 func _hide_tooltip() -> void:
 	tooltip_panel.visible = false

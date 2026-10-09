@@ -1,9 +1,8 @@
 extends Node
-## Scripted regression check for game_gui.gd's ability-trigger input gating (the `visible`
-## guard in _unhandled_input): triggering must fire while the menu is closed and must NOT fire
-## while it's open. Added after a real bug where that guard's boolean was inverted, silently
-## blocking every trigger exactly when the menu was closed — a static read missed it; an actual
-## simulated click didn't. Run headless:
+## Scripted regression check for game_gui.gd's ability-trigger input: a click that lands on
+## nothing triggers whether the menu is closed or open (the grid is live, Thomas), while a click
+## on a board cell doesn't. Originally added after a real bug where a menu guard's boolean was
+## inverted — a static read missed it; an actual simulated click didn't. Run headless:
 ## Godot --headless --path <project> res://scenes/tests/input_flow_test.tscn --quit-after 10
 
 @onready var game_gui: GameGui = $GameGui
@@ -22,7 +21,10 @@ func _ready() -> void:
 	var fire_perk := _take_from_inventory(&"fire")
 	game_gui.board.place_perk(fire_perk, Vector2i(3, 0), GridDirection.Value.EAST, GridDirection.Value.WEST)
 
-	await _check_trigger(true, false, "menu open, left-click")
+	await get_tree().process_frame # let the panels dock
+	await _check_trigger(true, true, "menu open, left-click on empty screen")
+	var cell: Button = game_gui._board_buttons[Vector2i(0, 4)]
+	await _check_trigger(true, false, "menu open, left-click on a board cell", cell.get_global_transform() * (cell.size / 2.0))
 	await _check_trigger(false, true, "menu closed, left-click")
 
 	var has_step_breakdown := "Normal Attack: +10 damage" in _last_triggered_text and "Fire: +5 damage" in _last_triggered_text
@@ -38,12 +40,14 @@ func _take_from_inventory(id: StringName) -> InventoryPerk:
 	assert(false, "%s not found in seeded inventory" % id)
 	return null
 
-func _check_trigger(menu_visible: bool, expect_trigger: bool, label: String) -> void:
+func _check_trigger(menu_visible: bool, expect_trigger: bool, label: String, at := Vector2.ZERO) -> void:
 	game_gui.visible = menu_visible
 	_last_triggered_text = ""
 	var event := InputEventMouseButton.new()
 	event.button_index = MOUSE_BUTTON_LEFT
 	event.pressed = true
+	event.position = at
+	event.global_position = at
 	Input.parse_input_event(event)
 	# parse_input_event() queues the event; it's processed at the start of the next frame(s).
 	await get_tree().process_frame

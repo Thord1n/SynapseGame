@@ -6,6 +6,6 @@
 script = ExtResource("1")
 id = &"shield"
 display_name = "Shield"
-description = "Passive. Raises max Shield while placed — not triggered by a control, see the Health/Shield readout."
-perk_class = 1
+description = "Passive physical shield. Raises max Shield while placed anywhere on the grid. Not tied to a button; blocking is the Block ability."
+perk_class = 0
 base_damage = 20.0
