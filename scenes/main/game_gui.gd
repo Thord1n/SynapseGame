@@ -41,6 +41,12 @@ const ABILITY_ACTIONS := {
 ## regardless of menu state. main.gd's on-screen combat log is that destination.
 signal ability_triggered(text: String)
 
+## When true (the default, so test scenes that instance game_gui.tscn on its own keep working),
+## pressing an ABILITY_ACTIONS key resolves that ability's chain straight away against
+## combat_target. main.tscn turns this off: there, TriggerRouter fires each chain on the real
+## gameplay event instead (the swing landing, a parry, dodging through a hit, takeoff).
+@export var trigger_on_keypress: bool = true
+
 @onready var board: Board = $Board
 @onready var inventory: Inventory = $Inventory
 @onready var memory_system: MemorySystem = $MemorySystem
@@ -142,7 +148,7 @@ func _input(event: InputEvent) -> void:
 ## visibility. Triggering should only happen while the menu is CLOSED (visible == false) —
 ## you're "in the game," not managing your loadout.
 func _unhandled_input(event: InputEvent) -> void:
-	if visible:
+	if visible or not trigger_on_keypress:
 		return
 	for action_name in ABILITY_ACTIONS:
 		if event.is_action_pressed(action_name):
@@ -155,11 +161,17 @@ func _unhandled_input(event: InputEvent) -> void:
 ## than plain activate() so the log can show each connected perk's own contribution, not just
 ## the aggregate total.
 func _trigger_named_ability(action_name: StringName, perk_id: StringName) -> void:
+	trigger_ability(perk_id, action_name, combat_target)
+
+## Resolves perk_id's chain against target (null = resolve and log, but hit nothing) and logs
+## it via ability_triggered under `label`. Returns the EffectContext, or null if perk_id isn't
+## placed. The single trigger path for both the keypress route above and TriggerRouter.
+func trigger_ability(perk_id: StringName, label: String, target: DummyTarget) -> EffectContext:
 	var placed := ability_controller.find_placed(board, perk_id)
 	if placed == null:
-		ability_triggered.emit("%s: not placed on the board" % perk_id)
-		return
-	var result := ability_controller.ability_activator.activate_with_steps(board, placed.position, combat_target)
+		ability_triggered.emit("%s: not placed on the board" % label)
+		return null
+	var result := ability_controller.ability_activator.activate_with_steps(board, placed.position, target)
 	var context: EffectContext = result["context"]
 	var steps: Array = result["steps"]
 
@@ -173,11 +185,12 @@ func _trigger_named_ability(action_name: StringName, perk_id: StringName) -> voi
 	var detail_suffix := ", " + ", ".join(details) if not details.is_empty() else ""
 
 	var text := "%s: %s damage%s" % [
-		action_name, PerkDefinition.format_number(context.damage * context.repeat_count), detail_suffix
+		label, PerkDefinition.format_number(context.damage * context.repeat_count), detail_suffix
 	]
 	for step in steps:
 		text += "\n  " + step
 	ability_triggered.emit(text)
+	return context
 
 ## Maps a perk's class and a 0-3 rotation state to concrete output/input directions.
 ## rotation_state doubles as the output direction's GridDirection.Value directly (their int

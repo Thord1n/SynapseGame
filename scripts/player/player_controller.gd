@@ -1,24 +1,16 @@
 class_name PlayerController
 extends CharacterBody2D
-## The player's in-game actions (ROADMAP.md item 2 — "no player movement"; the `World/Player`
-## node in main.tscn was purely decorative before this). Reads project.godot's real Input Map
-## actions (Left/Right/Jump/Block/Dash/Normal_attack, added directly in the editor —
-## Special_attack exists there too but isn't read here yet). Movement, Jump (menu-gated via
-## `menu`), Block/Parry, Dodge (the Dash action) and a melee-range Normal Attack (a timed
-## hitbox — see `hitbox`/_on_hitbox_area_entered) are real; Special Attack is still a stub, and the
-## melee hitbox deals a flat placeholder amount rather than a real perk-resolved number (see
-## PLACEHOLDER_MELEE_DAMAGE) — each remaining gap needs an integration decision that isn't made
-## yet (see the TODO on each), not just a body to fill in.
+## The player's physical actions. Reads project.godot's Input Map actions (Left/Right/Jump/
+## Block/Dash/Normal_attack/Special_attack, added directly in the editor): movement, Jump,
+## Guard (Block + Parry on one button), Dodge (the Dash action), and Normal/Special Attack (a
+## timed melee hitbox — see `hitbox`/_on_hitbox_area_entered). Physical behavior never depends
+## on a perk; what the SynapseGrid adds is resolved separately when the matching event fires
+## (see the signals below and TriggerRouter, scripts/combat/trigger_router.gd).
 ##
-## Distinct from PlayerCharacter (scripts/player/player_character.gd, Health/Shield stats,
-## currently a child of GameGui/MenuLayer rather than of this node's World) and from
-## AbilityController (scripts/player/ability_controller.gd, the *perk-triggered* Jump/Dash/
-## Normal Attack/Special Attack that already work today via game_gui.gd's ABILITY_ACTIONS,
-## reading the same project.godot actions this script does for Jump/Dash but resolving a perk
-## effect instead of moving anything — both fire on the same keypress, deliberately, see
-## jump()). All three represent "the player" from different angles that predate this script
-## and haven't been fully reconciled — see the TODOs below for where they'd
-## meet.
+## Distinct from PlayerCharacter (scripts/player/player_character.gd, Shield stat, a child of
+## GameGui/MenuLayer) and from AbilityController (scripts/player/ability_controller.gd, which
+## resolves an ability's perk chain). Those predate this script and still aren't fully merged
+## into one "player".
 ##
 ## Defense (receive_hit): the player has Health, and a Guard meter used only by Block. Per the
 ## Designer's numbers (design/answers-for-programmer.md), all exported so they can be tuned:
@@ -30,8 +22,8 @@ extends CharacterBody2D
 ## - Unblockable hits ignore Block and Parry entirely: only a dodge avoids them.
 ## - Dodge: a fixed-length dash in facing_direction with i-frames between `iframe_start` and
 ##   `iframe_end`, then `dodge_cooldown` before the next one.
-## The `parried`/`blocked`/`dodged_through`/`hurt`/`dodge_started`/`jump_started` signals are the trigger events
-## perks will hook later ("on_parry" etc.) — nothing listens to them for perk effects yet.
+## The `attack_landed`/`parried`/`blocked`/`dodged_through`/`hurt`/`dodge_started`/`jump_started`
+## signals are the grid's trigger events (on_hit, on_parry, ...); TriggerRouter listens to them.
 
 const MOVE_SPEED := 200.0
 const JUMP_VELOCITY := -400.0
@@ -53,6 +45,9 @@ signal dodged_through(hit: Hit)
 signal dodge_started
 ## Fires at takeoff (Thomas's call: Jump's grid trigger is on_jump_start, not on landing).
 signal jump_started
+## The melee hitbox touched an enemy. ability_id is the swing's ability (&"normal_attack" or
+## &"special_attack"); TriggerRouter resolves that ability's grid chain against the enemy.
+signal attack_landed(enemy: Enemy, ability_id: StringName)
 signal guard_broken
 ## Health hit 0. The test level has no game-over yet: the player is restored at their spawn
 ## point right after this fires (see _die).
@@ -72,6 +67,9 @@ signal died
 ## Not blocking for this long before Guard starts regenerating.
 @export var guard_regen_delay: float = 0.5
 @export var guard_break_stun: float = 0.8
+
+@export_group("Special Attack")
+@export var special_attack_cooldown: float = 3.0
 
 @export_group("Dodge")
 @export var dodge_distance: float = 120.0
@@ -96,6 +94,8 @@ var _last_block_released_at := -INF
 var _stunned_until := -INF
 var _dodge_started_at := -INF
 var _dodge_direction := 1
+var _special_ready_at := -INF
+var _swing_ability: StringName = &"normal_attack"
 
 ## Set externally by main.gd — this node's own way to check "is the perk-board menu open" so
 ## physical actions (currently just Jump) can be gated on it being closed, the same as the
@@ -140,12 +140,8 @@ func move(delta: float) -> void:
 	velocity.x = direction * MOVE_SPEED
 	move_and_slide()
 
-## Wired to the "Jump" action in _unhandled_input() below, gated on `menu` being closed. Jump
-## also has a separate, working trigger path via game_gui.gd's ABILITY_ACTIONS (resolves the
-## perk-board Jump ability's effect on the same keypress) — both fire together deliberately:
-## one moves the physical body, the other resolves whatever perk effect is attached, and
-## there's no conflict between them the way wiring normal_attack()/dash() to AbilityController
-## directly here would cause (see their TODOs) since this method never touches the perk system.
+## Wired to the "Jump" action in _unhandled_input() below, gated on `menu` being closed.
+## Emits jump_started at takeoff, which TriggerRouter turns into the Jump chain.
 func jump() -> void:
 	if is_on_floor() and not is_stunned():
 		velocity.y = JUMP_VELOCITY
@@ -166,33 +162,49 @@ func _unhandled_input(event: InputEvent) -> void:
 		dash()
 	elif event.is_action_pressed(&"Normal_attack"):
 		normal_attack()
+	elif event.is_action_pressed(&"Special_attack"):
+		special_attack()
 
 func _on_hitbox_area_entered(area: Area2D) -> void:
-	if area is Enemy:
+	if not area is Enemy:
+		return
+	if attack_landed.get_connections().is_empty():
+		# Nothing resolves the perk chain (e.g. a test scene with no TriggerRouter): fall back to
+		# the flat placeholder so a swing still does something observable.
 		(area as Enemy).take_damage(PLACEHOLDER_MELEE_DAMAGE)
+	else:
+		attack_landed.emit(area as Enemy, _swing_ability)
 
-## Faces the hitbox toward facing_direction and enables it briefly, dealing
-## PLACEHOLDER_MELEE_DAMAGE to whatever Enemy it overlaps (_on_hitbox_area_entered). Called
-## from the "Normal_attack" input, on the same keypress as game_gui.gd's separate perk-chain
-## resolution (which still only logs its number). TODO: the real version
-## replaces PLACEHOLDER_MELEE_DAMAGE by resolving the actual Normal_attack perk chain here too
-## (AbilityController against `board`, the same way game_gui.gd._trigger_named_ability() does —
-## see the class doc), once this node has a `board` reference to resolve it against.
+## Faces the hitbox toward facing_direction and enables it briefly. Each Enemy it touches emits
+## attack_landed(enemy, &"normal_attack"); TriggerRouter resolves the Normal Attack chain from
+## the SynapseGrid against that enemy. Called from the "Normal_attack" input.
 func normal_attack() -> void:
+	_swing(&"normal_attack")
+
+## Same swing as normal_attack(), resolving the Special Attack chain instead, gated by
+## special_attack_cooldown (the Designer's plain cooldown, no resource cost). Returns false while
+## cooling down, stunned or dodging.
+func special_attack() -> bool:
+	if _time < _special_ready_at or is_stunned() or is_dodging():
+		return false
+	_special_ready_at = _time + special_attack_cooldown
+	_swing(&"special_attack")
+	return true
+
+func special_attack_cooldown_left() -> float:
+	return maxf(0.0, _special_ready_at - _time)
+
+func _swing(ability_id: StringName) -> void:
 	if is_stunned() or is_dodging():
 		return
+	_swing_ability = ability_id
 	hitbox.position.x = abs(hitbox.position.x) * facing_direction
 	hitbox.monitoring = true
 	await get_tree().create_timer(0.15).timeout
 	hitbox.monitoring = false
 
-## Same TODO as normal_attack(), against the "special_attack" perk id instead.
-func special_attack() -> void:
-	pass
-
 ## The dodge. Per the Designer, Dash IS the dodge: this is the physical movement + i-frames,
-## always available; the perk board's "Dash" ability (AbilityController, same keypress) is what
-## perks will hang extra effects on. Returns false if it couldn't start (cooldown, stunned,
+## always available; the grid's Dash chain fires when a hit is dodged through (dodged_through). Returns false if it couldn't start (cooldown, stunned,
 ## already dodging).
 func dash() -> bool:
 	if is_dodging() or is_stunned():

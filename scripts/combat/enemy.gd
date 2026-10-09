@@ -31,5 +31,10 @@ func take_damage(amount: float) -> void:
 	damage_received.emit(amount, dummy_target.damage_taken)
 	_refresh_label()
 
+## Redraws the damage readout. Public for callers that damage dummy_target directly (e.g.
+## AbilityActivator via TriggerRouter) rather than through take_damage().
+func refresh() -> void:
+	_refresh_label()
+
 func _refresh_label() -> void:
 	damage_label.text = "%s\n%s dmg taken" % [dummy_target.target_name, PerkDefinition.format_number(dummy_target.damage_taken)]

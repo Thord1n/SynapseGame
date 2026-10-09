@@ -1,10 +1,11 @@
-[gd_scene load_steps=10 format=3 uid="uid://bvkpxjmijobiu"]
+[gd_scene load_steps=11 format=3 uid="uid://bvkpxjmijobiu"]
 
 [ext_resource type="Script" uid="uid://ukmjk5qx2vkp" path="res://scenes/main/main.gd" id="1"]
 [ext_resource type="PackedScene" uid="uid://i8pstg43adxf" path="res://scenes/main/game_gui.tscn" id="2"]
 [ext_resource type="Script" uid="uid://bpmirvjgkdx0j" path="res://scripts/player/player_controller.gd" id="3"]
 [ext_resource type="Script" path="res://scripts/combat/enemy.gd" id="4"]
 [ext_resource type="Script" path="res://scripts/combat/enemy_attacker.gd" id="5"]
+[ext_resource type="Script" path="res://scripts/combat/trigger_router.gd" id="6"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_ground"]
 size = Vector2(1152, 148)
@@ -124,6 +125,7 @@ position = Vector2(576, 324)
 layer = 2
 
 [node name="GameGui" parent="MenuLayer" instance=ExtResource("2")]
+trigger_on_keypress = false
 
 [node name="HudLayer" type="CanvasLayer" parent="."]
 
@@ -143,3 +145,8 @@ offset_right = -16.0
 offset_bottom = 120.0
 grow_horizontal = 0
 horizontal_alignment = 2
+
+[node name="TriggerRouter" type="Node" parent="." node_paths=PackedStringArray("player", "game_gui")]
+script = ExtResource("6")
+player = NodePath("../World/Player")
+game_gui = NodePath("../MenuLayer/GameGui")
