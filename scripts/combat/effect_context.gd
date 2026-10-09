@@ -6,10 +6,10 @@ extends RefCounted
 ##
 ## Two kinds of modifier (design/answers-for-programmer.md):
 ## - Sources (Fire, Ice, Shock) add an entry to `effects` and work anywhere.
-## - Amplifiers (Echo, Chain, Linger) only act on `effects` added earlier in the chain. With
+## - Amplifiers (Echo, Linger) only act on `effects` added earlier in the chain. With
 ##   none upstream they do nothing and mark themselves in `noop_perks`, so the UI can grey
 ##   them out. The Ability's own base hit is NOT an effect (it only adds to `damage`).
-## Explosion is neither: it works on the plain hit and simply carries whatever is upstream.
+## Explosion and Chain are neither: they work on the plain hit and carry whatever is upstream.
 
 ## Immediate damage: the Ability's base hit plus every source's damage, in one hit.
 var damage: float = 0.0

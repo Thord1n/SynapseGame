@@ -969,7 +969,7 @@ func _refresh_board_grid() -> void:
 		var is_held_here: bool = board_source is Vector2i and board_source == pos
 		button.modulate = COLOR_HELD if is_held_here else (COLOR_IDLE if idle.has(pos) else COLOR_NORMAL)
 
-## Positions of amplifier perks (Echo, Chain, Linger) that currently do nothing because no source
+## Positions of amplifier perks (Echo, Linger) that currently do nothing because no source
 ## effect comes before them in their chain — greyed out on the board so the player can see it.
 func _idle_amplifier_positions() -> Dictionary:
 	var result := {}

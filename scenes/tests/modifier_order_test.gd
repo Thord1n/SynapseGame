@@ -1,8 +1,8 @@
 extends Node
 ## Scripted regression check for Thomas's modifier order rule and Shock buildup, against the
-## real main.tscn: sources (Fire/Ice/Shock) work anywhere; amplifiers (Echo, Chain, Linger) only
+## real main.tscn: sources (Fire/Ice/Shock) work anywhere; amplifiers (Echo, Linger) only
 ## act on source effects earlier in the chain and are flagged as no-ops otherwise; Explosion
-## works on the plain hit; Echo repeats upstream effects at 60% after a delay; enough Shock
+## and Chain work on the plain hit; Echo repeats upstream effects at 60% after a delay; enough Shock
 ## stuns an enemy, cancelling its telegraph, then grants stun immunity. Run headless:
 ## Godot --headless --path <project> res://scenes/tests/modifier_order_test.tscn --quit-after 3000
 
@@ -43,13 +43,13 @@ func _ready() -> void:
 	await _seconds(0.2)
 	_check(is_equal_approx(enemy.dummy_target.damage_taken - before, 18.0), "the echo lands Fire again at 60% (+3) after ~0.3 s")
 
-	# --- Chain needs a source; Explosion doesn't; Linger does.
+	# --- Chain and Explosion work on the plain hit; Linger needs a source.
 	_build_chain([&"chain"])
 	ctx = router.fire(&"normal_attack", null)
-	_check(_noop_ids(ctx) == [&"chain"] and ctx.target_count == 1, "Attack -> Chain: no-op (nothing upstream)")
+	_check(ctx.noop_perks.is_empty() and ctx.target_count == 2, "Attack -> Chain: the plain hit chains to a second target")
 	_build_chain([&"fire", &"chain"])
 	ctx = router.fire(&"normal_attack", null)
-	_check(ctx.noop_perks.is_empty() and ctx.target_count == 2, "Attack -> Fire -> Chain: chains to a second target")
+	_check(ctx.noop_perks.is_empty() and ctx.target_count == 2, "Attack -> Fire -> Chain: chains the fire hit to a second target")
 	_build_chain([&"explosion"])
 	ctx = router.fire(&"normal_attack", null)
 	_check(ctx.noop_perks.is_empty() and ctx.radius > 0.0, "Attack -> Explosion: explodes on the plain hit")
