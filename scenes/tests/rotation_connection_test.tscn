@@ -1,0 +1,9 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scenes/tests/rotation_connection_test.gd" id="1"]
+[ext_resource type="PackedScene" path="res://scenes/main/game_gui.tscn" id="2"]
+
+[node name="RotationConnectionTest" type="Node"]
+script = ExtResource("1")
+
+[node name="GameGui" parent="." instance=ExtResource("2")]

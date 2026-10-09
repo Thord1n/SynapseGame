@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="AreaPerkDefinition" load_steps=2 format=3 uid="uid://oifja11b5qqm"]
+
+[ext_resource type="Script" uid="uid://obrssl7eme2t" path="res://scripts/perks/area_perk_definition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+radius = 3.0
+id = &"explosion"
+display_name = "Explosion"
+description = "Explodes with the effects ahead "
+perk_class = 2

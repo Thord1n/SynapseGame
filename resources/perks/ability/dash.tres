@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="PerkDefinition" load_steps=2 format=3 uid="uid://dtvaapy3wc6g5"]
+
+[ext_resource type="Script" uid="uid://dx3381qoiuty3" path="res://scripts/perks/perk_definition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"dash"
+display_name = "Dash"
+description = "Dash in a Direction"
+input_accepts = Array[int]([2, 1])
+output_accepts = Array[int]([2, 1])

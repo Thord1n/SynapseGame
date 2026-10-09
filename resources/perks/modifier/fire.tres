@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="ElementalPerkDefinition" load_steps=2 format=3 uid="uid://6rad46qo6kpp"]
+
+[ext_resource type="Script" uid="uid://1u02ylkiopw7" path="res://scripts/perks/elemental_perk_definition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+damage = 5.0
+id = &"fire"
+display_name = "Fire"
+description = "Fire effect"
+perk_class = 2
+output_accepts = Array[int]([2, 1])

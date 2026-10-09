@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="ElementalPerkDefinition" load_steps=2 format=3 uid="uid://cco5t8oyllf2e"]
+
+[ext_resource type="Script" uid="uid://1u02ylkiopw7" path="res://scripts/perks/elemental_perk_definition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+element = 2
+damage = 5.0
+id = &"ice"
+display_name = "Ice"
+description = "Ice Effect"
+perk_class = 2
+output_accepts = Array[int]([2, 1])

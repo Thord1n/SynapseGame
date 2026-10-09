@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="ShieldPerkDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/perks/shield_perk_definition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"shield"
+display_name = "Shield"
+description = "Passive. Raises max Shield while placed — not triggered by a control, see the Health/Shield readout."
+perk_class = 1
+base_damage = 20.0

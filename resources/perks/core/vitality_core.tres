@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="PerkDefinition" load_steps=2 format=3 uid="uid://clc1tkby51o7b"]
+
+[ext_resource type="Script" uid="uid://dx3381qoiuty3" path="res://scripts/perks/perk_definition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"vitality_core"
+display_name = "Vitality Core"
+description = "Core functionality node. Never has an input or output — never connects."
+perk_class = 0

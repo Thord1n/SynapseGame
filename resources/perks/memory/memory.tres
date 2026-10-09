@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="MemoryPerkDefinition" load_steps=2 format=3 uid="uid://bx7s1xyjrd4il"]
+
+[ext_resource type="Script" uid="uid://bnaxgovprqlo5" path="res://scripts/perks/memory_perk_definition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"memory"
+display_name = "Memory"
+description = "Passive. Slot in the dedicated Memory slot to raise board memory capacity — doubles per level, 4 bytes at level 1. Not placeable on the board itself."
+perk_class = 3
+base_damage = 4.0
+base_memory = 0
+scaling_exponent = 1.0

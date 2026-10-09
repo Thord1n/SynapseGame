@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="PerkDefinition" load_steps=2 format=3 uid="uid://d25vtf2d4ivib"]
+
+[ext_resource type="Script" uid="uid://dx3381qoiuty3" path="res://scripts/perks/perk_definition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"normal_attack"
+display_name = "Normal Attack"
+description = "Base ability. Input/output side chosen by the player at placement."
+input_accepts = Array[int]([2])
+base_damage = 10.0

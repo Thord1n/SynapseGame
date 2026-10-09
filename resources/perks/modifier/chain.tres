@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="ChainPerkDefinition" load_steps=2 format=3 uid="uid://d3eq6pdakfa2i"]
+
+[ext_resource type="Script" uid="uid://ccds13jmtv1hg" path="res://scripts/perks/chain_perk_definition.gd" id="2_k6c2w"]
+
+[resource]
+script = ExtResource("2_k6c2w")
+id = &"chain"
+display_name = "Chain"
+description = "Chains the incoming effect to nearby enemies. "
+perk_class = 2
+metadata/_custom_type_script = "uid://ccds13jmtv1hg"

@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="EchoPerkDefinition" load_steps=2 format=3 uid="uid://y343h8f4teio"]
+
+[ext_resource type="Script" uid="uid://syqgrfg6fvmr" path="res://scripts/perks/echo_perk_definition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"echo"
+display_name = "Echo"
+description = "Repeat its incoming effect."
+perk_class = 2
+tags = Array[StringName]([&"element"])
