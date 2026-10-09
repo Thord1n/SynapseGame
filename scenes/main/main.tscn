@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3 uid="uid://bvkpxjmijobiu"]
+[gd_scene load_steps=12 format=3 uid="uid://bvkpxjmijobiu"]
 
 [ext_resource type="Script" uid="uid://ukmjk5qx2vkp" path="res://scenes/main/main.gd" id="1"]
 [ext_resource type="PackedScene" uid="uid://i8pstg43adxf" path="res://scenes/main/game_gui.tscn" id="2"]
@@ -6,6 +6,7 @@
 [ext_resource type="Script" path="res://scripts/combat/enemy.gd" id="4"]
 [ext_resource type="Script" path="res://scripts/combat/enemy_attacker.gd" id="5"]
 [ext_resource type="Script" path="res://scripts/combat/trigger_router.gd" id="6"]
+[ext_resource type="Script" path="res://scripts/camera/follow_camera.gd" id="7"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_ground"]
 size = Vector2(1152, 148)
@@ -120,8 +121,13 @@ telegraph_time = 0.8
 position = Vector2(70, 0)
 shape = SubResource("RectangleShape2D_reach")
 
-[node name="Camera2D" type="Camera2D" parent="."]
+[node name="Camera2D" type="Camera2D" parent="." node_paths=PackedStringArray("target")]
 position = Vector2(576, 324)
+limit_left = 0
+limit_right = 1152
+limit_bottom = 648
+script = ExtResource("7")
+target = NodePath("../World/Player")
 
 [node name="MenuLayer" type="CanvasLayer" parent="."]
 layer = 2
