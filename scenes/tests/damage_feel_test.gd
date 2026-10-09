@@ -1,6 +1,6 @@
 extends Node
 ## Scripted regression check for the grey-box damage-dealing feedback (Thomas: test dealing
-## damage first): enemies start passive with F2 toggling their attacks, and each hit an enemy
+## damage first): enemies patrol but start passive, with F2 toggling their attacks, and each hit an enemy
 ## takes flashes and knocks its body, pops a damage number (plus a coloured tag per element),
 ## feeds a DPS readout and triggers a short real-time hitstop. Run headless:
 ## Godot --headless --path <project> res://scenes/tests/damage_feel_test.tscn --quit-after 3000
@@ -21,6 +21,15 @@ func _ready() -> void:
 	_press_f2()
 	await _idle(3)
 	_check(not ($Main/World/Enemy/Attacker as EnemyAttacker).active, "F2 turns them off again")
+
+	var x0 := enemy.position.x
+	await _frames(30)
+	_check(enemy.position.x != x0, "enemies patrol (moved %s px)" % (enemy.position.x - x0))
+	enemy._stun()
+	x0 = enemy.position.x
+	await _frames(30)
+	_check(enemy.position.x == x0, "a Shock stun stops the patrol")
+	enemy.patrol_distance = 0.0
 
 	var labels_before := _floating_labels()
 	enemy.take_damage(12.0)

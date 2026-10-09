@@ -18,6 +18,7 @@ var _log: Array[String] = []
 
 func _ready() -> void:
 	$Main.hitstop_seconds = 0.0 # frame-counted waits below assume normal time
+	for e in [$Main/World/Enemy, $Main/World/RedEnemy]: e.patrol_distance = 0.0 # fixed positions
 	$Main/World/Enemy/Attacker.active = false
 	$Main/World/RedEnemy/Attacker.active = false
 	game_gui.ability_triggered.connect(func(text): _log.append(text))

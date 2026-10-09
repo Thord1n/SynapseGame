@@ -12,6 +12,7 @@ var _fail_count := 0
 
 func _ready() -> void:
 	$Main.hitstop_seconds = 0.0 # frame-counted waits below assume normal time
+	for e in [$Main/World/Enemy, $Main/World/RedEnemy]: e.patrol_distance = 0.0 # fixed positions
 	# Let physics settle for a couple seconds of simulated frames before checking anything.
 	for i in 120:
 		await get_tree().physics_frame

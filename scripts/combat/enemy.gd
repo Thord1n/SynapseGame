@@ -33,6 +33,12 @@ signal stunned(duration: float)
 
 ## Placeholder hit feedback so dealing damage reads on screen (Thomas: test damage dealing
 ## first). The final per-modifier VFX/SFX signatures are the Artist's; these are grey-box.
+## Phase 1 (Thomas): enemies are moving targets. They walk back and forth this far either side
+## of where they start; 0 keeps them still. A Shock stun stops them.
+@export_group("Patrol")
+@export var patrol_distance: float = 0.0
+@export var patrol_speed: float = 60.0
+
 @export_group("Hit feedback")
 @export var flash_seconds: float = 0.08
 @export var knockback_pixels: float = 8.0
@@ -61,12 +67,15 @@ var _was_stunned := false
 
 ## [time, amount] pairs inside dps_window, for the DPS readout.
 var _recent_hits: Array = []
+var _patrol_origin: Vector2
+var _patrol_direction := 1.0
 var _body_tween: Tween
 
 const GROUP := &"enemies"
 
 func _ready() -> void:
 	add_to_group(GROUP)
+	_patrol_origin = position
 	dummy_target.target_name = "Test Dummy"
 	dummy_target.damaged.connect(_on_damaged)
 	dummy_target.effect_applied.connect(_on_effect_applied)
@@ -74,6 +83,7 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	_time += delta
+	_patrol(delta)
 	if shock_buildup > 0.0 and _time - _last_shock_at >= shock_decay_delay:
 		_set_shock(0.0)
 	if is_stunned() != _was_stunned:
@@ -82,6 +92,15 @@ func _physics_process(delta: float) -> void:
 		_refresh_label()
 	elif not _recent_hits.is_empty():
 		_refresh_label() # let the DPS readout decay
+
+func _patrol(delta: float) -> void:
+	if patrol_distance <= 0.0 or is_stunned():
+		return
+	position.x += _patrol_direction * patrol_speed * delta
+	var offset := position.x - _patrol_origin.x
+	if absf(offset) >= patrol_distance:
+		position.x = _patrol_origin.x + signf(offset) * patrol_distance
+		_patrol_direction = -signf(offset)
 
 ## Thin passthrough so callers that only have an Enemy reference (not its dummy_target) can
 ## still deal damage the same way AbilityActivator does internally.

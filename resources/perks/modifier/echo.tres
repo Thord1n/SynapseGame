@@ -6,6 +6,7 @@
 script = ExtResource("1")
 id = &"echo"
 display_name = "Echo"
-description = "Repeat its incoming effect."
+description = "Repeats the source effects before it as fading bounces: 70%, then 70% of that, one every 0.3 s. One bounce per level."
 perk_class = 2
+complexity = 1.5
 tags = Array[StringName]([&"element"])
