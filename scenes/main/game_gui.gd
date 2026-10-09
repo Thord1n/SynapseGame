@@ -41,6 +41,13 @@ const ABILITY_ACTIONS := {
 ## regardless of menu state. main.gd's on-screen combat log is that destination.
 signal ability_triggered(text: String)
 
+## Where inventory/board/memory slot are saved (see SaveSystem). Empty means no persistence at
+## all — the default, so every test scene that instances game_gui.tscn directly still starts
+## from the seeded inventory and never touches a save file. main.tscn sets this. With it set,
+## the save is loaded on _ready (falling back to the seeded inventory if there isn't one) and
+## rewritten after every inventory/board/memory change, so quitting at any point loses nothing.
+@export var save_path: String = ""
+
 @onready var board: Board = $Board
 @onready var inventory: Inventory = $Inventory
 @onready var memory_system: MemorySystem = $MemorySystem
@@ -85,6 +92,7 @@ var _merge_stack: Array = []
 ## How many pairs the "Merge" button will consume, 1..._merge_max — see _on_merge_count_step.
 var _merge_count: int = 1
 var _merge_max: int = 1
+var _save_queued := false
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -94,14 +102,24 @@ func _ready() -> void:
 	# base_capacity left at MemorySystem's own default (4 bytes, doubling per MemoryUpgrade).
 
 	_build_ui()
-	_seed_inventory()
+	if not _load_game():
+		_seed_inventory()
 
 	board.board_recomputed.connect(func(_dirty): _refresh_ui())
 	board.board_recomputed.connect(func(_dirty): player.recompute_shield_from_board(board))
 	inventory.inventory_changed.connect(_refresh_ui)
+	if not save_path.is_empty():
+		board.board_recomputed.connect(func(_dirty): _queue_save())
+		inventory.inventory_changed.connect(_queue_save)
+		memory_system.capacity_changed.connect(_queue_save)
 
 	player.recompute_shield_from_board(board)
 	_refresh_ui()
+
+## Flushes a save still queued for the end of the frame, in case the window closes first.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST and _save_queued:
+		save_game()
 
 ## Keeps the held-perk symbol snapped to the cursor. Driven by _process rather than input
 ## events so it stays glued to the mouse regardless of what caused it to move.
@@ -539,6 +557,46 @@ func _seed_inventory() -> void:
 		var copies := 1 if gets_one_copy else 4
 		for i in copies:
 			inventory.add_perk(InventoryPerk.new(definition, 1))
+
+## Returns false if there was nothing to load (no save_path, no file, or unreadable data), so
+## _ready knows to seed a fresh inventory instead.
+func _load_game() -> bool:
+	if save_path.is_empty():
+		return false
+	var data := SaveSystem.load_from_file(save_path)
+	if data.is_empty():
+		return false
+	var definitions := SaveSystem.index_definitions(_load_perk_definitions())
+	SaveSystem.apply(data, definitions, inventory, board, memory_system)
+	return true
+
+## Coalesces every change from one player action into a single write at the end of the frame.
+## Also needed for correctness, not just fewer writes: mid-action, a perk can be on the board
+## AND still recorded in _held (place_perk fires board_recomputed before _held is cleared), so
+## saving synchronously there would write it twice.
+func _queue_save() -> void:
+	if _save_queued:
+		return
+	_save_queued = true
+	save_game.call_deferred()
+
+## A held perk lifted off the board or memory slot isn't in any container while it's in hand —
+## it's saved as inventory so quitting mid-move can't lose it. One held from the inventory is
+## still in inventory.perks, so it needs nothing extra.
+func save_game() -> void:
+	_save_queued = false
+	if save_path.is_empty():
+		return
+	var extra: Array[InventoryPerk] = []
+	if not _held.is_empty() and not _held_is_from_inventory():
+		extra.append(_held["perk"])
+	SaveSystem.save_to_file(SaveSystem.serialize(inventory, board, memory_system, extra), save_path)
+
+## Wipes the save and starts over from the seeded inventory. Not bound to any input yet —
+## callable from the debugger / a future menu button.
+func reset_save() -> void:
+	SaveSystem.delete_save(save_path)
+	get_tree().reload_current_scene()
 
 func _load_perk_definitions() -> Array[PerkDefinition]:
 	var result: Array[PerkDefinition] = []
