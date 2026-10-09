@@ -42,7 +42,10 @@ var _was_stunned := false
 
 @onready var damage_label: Label = $DamageLabel
 
+const GROUP := &"enemies"
+
 func _ready() -> void:
+	add_to_group(GROUP)
 	dummy_target.target_name = "Test Dummy"
 	dummy_target.damaged.connect(_on_damaged)
 	dummy_target.effect_applied.connect(_on_effect_applied)

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 id = &"shield"
 display_name = "Shield"
-description = "Passive. Raises max Shield while placed — not triggered by a control, see the Health/Shield readout."
+description = "Block (hold) and Parry (press just before a hit) on one button. Its level sets max Guard. Modifiers chained here fire on a parry."
 perk_class = 1
-base_damage = 20.0
+input_accepts = Array[int]([2])
+base_damage = 100.0

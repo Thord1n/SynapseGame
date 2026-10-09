@@ -2,7 +2,8 @@ extends Node2D
 ## Top-level scene: a minimal 2D game view (World) plus the perk-board GUI as a Tab-toggled
 ## menu layered on top (MenuLayer/GameGui), plus an always-on-screen combat log (HudLayer) that
 ## catches GameGui's ability_triggered signal — GameGui's own status_label lives inside a panel
-## that's hidden exactly when a trigger can happen, so it can't be the destination for that.
+## that's usually closed when a trigger happens, so it can't be the destination for that. The
+## menu never pauses the game or blocks the player: the grid is live (Thomas).
 
 const TOGGLE_ACTION := &"toggle_menu"
 ## Entries, not lines — each one is now potentially multi-line (action + per-Modifier
@@ -24,7 +25,6 @@ func _ready() -> void:
 	# Ability triggers now deal damage to the persistent Enemy in the world instead of a
 	# throwaway target that reset every press — see GameGui.combat_target's own doc comment.
 	game_gui.combat_target = enemy.dummy_target
-	player.menu = game_gui
 	_wire_player_hud()
 
 ## HP/Guard readout plus a combat-log line for each defensive outcome, so block/parry/
@@ -60,8 +60,7 @@ func _register_toggle_action() -> void:
 	joy.button_index = JOY_BUTTON_START
 	InputMap.action_add_event(TOGGLE_ACTION, joy)
 
-## Hiding GameGui is the only state this needs to track — see the `visible` guard in
-## game_gui.gd's _unhandled_input for the other half (why triggering only fires while closed).
+## Showing/hiding GameGui is the only state this needs to track. Nothing pauses while it's open.
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed(TOGGLE_ACTION):
 		game_gui.visible = not game_gui.visible
