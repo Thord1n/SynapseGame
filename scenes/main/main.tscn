@@ -1,15 +1,19 @@
-[gd_scene load_steps=8 format=3 uid="uid://bvkpxjmijobiu"]
+[gd_scene load_steps=10 format=3 uid="uid://bvkpxjmijobiu"]
 
 [ext_resource type="Script" uid="uid://ukmjk5qx2vkp" path="res://scenes/main/main.gd" id="1"]
 [ext_resource type="PackedScene" uid="uid://i8pstg43adxf" path="res://scenes/main/game_gui.tscn" id="2"]
 [ext_resource type="Script" uid="uid://bpmirvjgkdx0j" path="res://scripts/player/player_controller.gd" id="3"]
 [ext_resource type="Script" path="res://scripts/combat/enemy.gd" id="4"]
+[ext_resource type="Script" path="res://scripts/combat/enemy_attacker.gd" id="5"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_ground"]
 size = Vector2(1152, 148)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_enemy"]
 size = Vector2(60, 60)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_reach"]
+size = Vector2(110, 60)
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_k2fmo"]
 height = 47.0
@@ -74,6 +78,45 @@ offset_bottom = -32.0
 horizontal_alignment = 1
 autowrap_mode = 2
 
+[node name="Attacker" type="Area2D" parent="World/Enemy"]
+script = ExtResource("5")
+kind = 0
+damage = 15.0
+telegraph_time = 0.6
+
+[node name="Reach" type="CollisionShape2D" parent="World/Enemy/Attacker"]
+position = Vector2(70, 0)
+shape = SubResource("RectangleShape2D_reach")
+
+[node name="RedEnemy" type="Area2D" parent="World"]
+position = Vector2(220, 470)
+script = ExtResource("4")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="World/RedEnemy"]
+shape = SubResource("RectangleShape2D_enemy")
+
+[node name="Polygon2D" type="Polygon2D" parent="World/RedEnemy"]
+color = Color(0.55, 0.1, 0.1, 1)
+polygon = PackedVector2Array(-30, -30, 30, -30, 30, 30, -30, 30)
+
+[node name="DamageLabel" type="Label" parent="World/RedEnemy"]
+offset_left = -50.0
+offset_top = -70.0
+offset_right = 50.0
+offset_bottom = -32.0
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="Attacker" type="Area2D" parent="World/RedEnemy"]
+script = ExtResource("5")
+kind = 1
+damage = 25.0
+telegraph_time = 0.8
+
+[node name="Reach" type="CollisionShape2D" parent="World/RedEnemy/Attacker"]
+position = Vector2(70, 0)
+shape = SubResource("RectangleShape2D_reach")
+
 [node name="Camera2D" type="Camera2D" parent="."]
 position = Vector2(576, 324)
 
@@ -89,3 +132,14 @@ offset_left = 16.0
 offset_top = 16.0
 offset_right = 600.0
 offset_bottom = 260.0
+
+[node name="PlayerStatusLabel" type="Label" parent="HudLayer"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -340.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = 120.0
+grow_horizontal = 0
+horizontal_alignment = 2
