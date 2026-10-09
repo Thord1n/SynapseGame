@@ -30,7 +30,7 @@ extends CharacterBody2D
 ## - Unblockable hits ignore Block and Parry entirely: only a dodge avoids them.
 ## - Dodge: a fixed-length dash in facing_direction with i-frames between `iframe_start` and
 ##   `iframe_end`, then `dodge_cooldown` before the next one.
-## The `parried`/`blocked`/`dodged_through`/`hurt`/`dodge_started` signals are the trigger events
+## The `parried`/`blocked`/`dodged_through`/`hurt`/`dodge_started`/`jump_started` signals are the trigger events
 ## perks will hook later ("on_parry" etc.) — nothing listens to them for perk effects yet.
 
 const MOVE_SPEED := 200.0
@@ -51,6 +51,8 @@ signal blocked(hit: Hit)
 signal parried(hit: Hit)
 signal dodged_through(hit: Hit)
 signal dodge_started
+## Fires at takeoff (Thomas's call: Jump's grid trigger is on_jump_start, not on landing).
+signal jump_started
 signal guard_broken
 ## Health hit 0. The test level has no game-over yet: the player is restored at their spawn
 ## point right after this fires (see _die).
@@ -147,6 +149,7 @@ func move(delta: float) -> void:
 func jump() -> void:
 	if is_on_floor() and not is_stunned():
 		velocity.y = JUMP_VELOCITY
+		jump_started.emit()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed(&"Block"):

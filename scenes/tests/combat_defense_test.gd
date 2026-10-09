@@ -74,6 +74,16 @@ func _ready() -> void:
 	_check(player.dash(), "dodge is available again after the cooldown")
 	await _frames(20)
 
+	# --- Jump fires jump_started at takeoff only
+	var jumps := [0]
+	player.jump_started.connect(func(): jumps[0] += 1)
+	player.jump()
+	_check(jumps[0] == 1, "jump_started fires at takeoff")
+	await _frames(5)
+	player.jump()
+	_check(not player.is_on_floor() and jumps[0] == 1, "no jump_started while airborne")
+	await _frames(60)
+
 	# --- Death respawns at spawn
 	var died := [false]
 	player.died.connect(func(): died[0] = true, CONNECT_ONE_SHOT)
