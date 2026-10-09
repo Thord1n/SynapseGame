@@ -11,6 +11,7 @@ var _pass_count := 0
 var _fail_count := 0
 
 func _ready() -> void:
+	$Main.hitstop_seconds = 0.0 # frame-counted waits below assume normal time
 	# Let physics settle for a couple seconds of simulated frames before checking anything.
 	for i in 120:
 		await get_tree().physics_frame

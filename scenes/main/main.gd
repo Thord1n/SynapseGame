@@ -19,7 +19,17 @@ const COMBAT_LOG_MAX_ENTRIES := 3
 ## How long the "missing perk" cue stays on screen.
 const MISSING_CUE_SECONDS := 1.2
 
+## Real-time seconds the game nearly freezes on each hit an enemy takes (grey-box hit feel).
+## 0 turns it off (tests do).
+@export var hitstop_seconds: float = 0.05
+## Thomas: test dealing damage first, receiving it later. Enemies start passive; F2 toggles
+## their attacks.
+@export var enemy_attacks_enabled: bool = false
+const HITSTOP_TIME_SCALE := 0.05
+const TOGGLE_ATTACKS_KEY := KEY_F2
+
 var _combat_log_lines: Array[String] = []
+var _hitstop_id := 0
 var _missing_cue: Label
 var _missing_cue_timer: SceneTreeTimer
 
@@ -31,6 +41,28 @@ func _ready() -> void:
 	# throwaway target that reset every press — see GameGui.combat_target's own doc comment.
 	game_gui.combat_target = enemy.dummy_target
 	_wire_player_hud()
+	for node in get_tree().get_nodes_in_group(Enemy.GROUP):
+		(node as Enemy).damage_received.connect(func(amount, _total): if amount > 0.0: _hitstop())
+	_set_enemy_attacks(enemy_attacks_enabled)
+
+func _set_enemy_attacks(enabled: bool) -> void:
+	enemy_attacks_enabled = enabled
+	for node in get_tree().get_nodes_in_group(Enemy.GROUP):
+		for child in node.get_children():
+			if child is EnemyAttacker:
+				child.active = enabled
+
+## Brief near-freeze on a hit. Timed in real time (the timer ignores time_scale); a new hit
+## restarts it, and only the latest one's timer ends it.
+func _hitstop() -> void:
+	if hitstop_seconds <= 0.0:
+		return
+	_hitstop_id += 1
+	var id := _hitstop_id
+	Engine.time_scale = HITSTOP_TIME_SCALE
+	get_tree().create_timer(hitstop_seconds, true, false, true).timeout.connect(func():
+		if id == _hitstop_id:
+			Engine.time_scale = 1.0)
 
 ## HP/Guard readout plus a combat-log line for each defensive outcome, so block/parry/
 ## dodge timing can be judged while playing without a debugger.
@@ -89,6 +121,10 @@ func _register_toggle_action() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed(TOGGLE_ACTION):
 		game_gui.visible = not game_gui.visible
+		get_viewport().set_input_as_handled()
+	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == TOGGLE_ATTACKS_KEY:
+		_set_enemy_attacks(not enemy_attacks_enabled)
+		_on_ability_triggered("Enemy attacks %s (F2)" % ("ON" if enemy_attacks_enabled else "OFF"))
 		get_viewport().set_input_as_handled()
 
 func _on_ability_triggered(text: String) -> void:

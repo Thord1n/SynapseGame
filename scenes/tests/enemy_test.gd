@@ -15,6 +15,7 @@ var _pass_count := 0
 var _fail_count := 0
 
 func _ready() -> void:
+	$Main.hitstop_seconds = 0.0 # frame-counted waits below assume normal time
 	_check(game_gui.combat_target == enemy.dummy_target, "main.gd wired GameGui.combat_target to the Enemy's own target")
 
 	game_gui.memory_system.slot_perk(_take_from_inventory(&"memory"))

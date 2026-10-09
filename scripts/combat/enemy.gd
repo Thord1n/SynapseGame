@@ -31,6 +31,22 @@ signal stunned(duration: float)
 @export var stun_duration: float = 1.5
 @export var stun_immunity: float = 3.0
 
+## Placeholder hit feedback so dealing damage reads on screen (Thomas: test damage dealing
+## first). The final per-modifier VFX/SFX signatures are the Artist's; these are grey-box.
+@export_group("Hit feedback")
+@export var flash_seconds: float = 0.08
+@export var knockback_pixels: float = 8.0
+@export var number_rise: float = 40.0
+@export var number_seconds: float = 0.7
+## Window for the DPS readout on the label.
+@export var dps_window: float = 5.0
+
+const ELEMENT_COLORS := {
+	ElementalPerkDefinition.Element.FIRE: Color(1.0, 0.55, 0.2),
+	ElementalPerkDefinition.Element.ICE: Color(0.5, 0.85, 1.0),
+	ElementalPerkDefinition.Element.SHOCK: Color(1.0, 0.95, 0.35),
+}
+
 var dummy_target := DummyTarget.new()
 var shock_buildup: float = 0.0
 
@@ -41,6 +57,11 @@ var _immune_until := -INF
 var _was_stunned := false
 
 @onready var damage_label: Label = $DamageLabel
+@onready var body: CanvasItem = get_node_or_null(^"Polygon2D")
+
+## [time, amount] pairs inside dps_window, for the DPS readout.
+var _recent_hits: Array = []
+var _body_tween: Tween
 
 const GROUP := &"enemies"
 
@@ -59,6 +80,8 @@ func _physics_process(delta: float) -> void:
 		_was_stunned = is_stunned()
 		_set_attackers_paused(_was_stunned)
 		_refresh_label()
+	elif not _recent_hits.is_empty():
+		_refresh_label() # let the DPS readout decay
 
 ## Thin passthrough so callers that only have an Enemy reference (not its dummy_target) can
 ## still deal damage the same way AbilityActivator does internally.
@@ -72,10 +95,57 @@ func is_stun_immune() -> bool:
 	return is_stunned() or _time < _immune_until
 
 func _on_damaged(amount: float) -> void:
+	_recent_hits.append([_time, amount])
 	damage_received.emit(amount, dummy_target.damage_taken)
+	if amount > 0.0:
+		_show_hit(amount)
 	_refresh_label()
 
+## DPS over the last dps_window seconds.
+func recent_dps() -> float:
+	while not _recent_hits.is_empty() and _time - _recent_hits[0][0] > dps_window:
+		_recent_hits.pop_front()
+	var total := 0.0
+	for hit in _recent_hits:
+		total += hit[1]
+	return total / dps_window
+
+## Flash, a small knock away from the player, and a rising damage number.
+func _show_hit(amount: float) -> void:
+	_spawn_number(PerkDefinition.format_number(amount), Color.WHITE)
+	if body == null:
+		return
+	var away := 1.0
+	var player := get_tree().get_first_node_in_group(&"player") as Node2D
+	if player:
+		away = signf(global_position.x - player.global_position.x)
+		if away == 0.0:
+			away = 1.0
+	if _body_tween:
+		_body_tween.kill()
+	body.self_modulate = Color(3, 3, 3)
+	(body as Node2D).position = Vector2(knockback_pixels * away, 0)
+	_body_tween = create_tween().set_parallel()
+	_body_tween.tween_property(body, ^"self_modulate", Color.WHITE, flash_seconds)
+	_body_tween.tween_property(body, ^"position", Vector2.ZERO, flash_seconds * 2.0)
+
+func _spawn_number(text: String, color: Color) -> void:
+	var label := Label.new()
+	label.text = text
+	label.modulate = color
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.position = Vector2(randf_range(-24, 4), -60)
+	label.z_index = 10
+	add_child(label)
+	var tween := label.create_tween().set_parallel()
+	tween.tween_property(label, ^"position:y", label.position.y - number_rise, number_seconds)
+	tween.tween_property(label, ^"modulate:a", 0.0, number_seconds).set_delay(number_seconds * 0.4)
+	tween.chain().tween_callback(label.queue_free)
+
 func _on_effect_applied(effect: Dictionary) -> void:
+	var element = effect.get("element")
+	if ELEMENT_COLORS.has(element):
+		_spawn_number(String(effect.get("id", "")).capitalize(), ELEMENT_COLORS[element])
 	if effect.get("element") != ElementalPerkDefinition.Element.SHOCK or is_stun_immune():
 		return
 	_last_shock_at = _time
@@ -105,7 +175,8 @@ func _set_attackers_paused(paused: bool) -> void:
 			child.set_stunned(paused)
 
 func _refresh_label() -> void:
-	var text := "%s\n%s dmg taken" % [dummy_target.target_name, PerkDefinition.format_number(dummy_target.damage_taken)]
+	var text := "%s\n%s dmg taken\n%s DPS" % [dummy_target.target_name,
+		PerkDefinition.format_number(dummy_target.damage_taken), PerkDefinition.format_number(snappedf(recent_dps(), 0.1))]
 	if is_stunned():
 		text += "\nSTUNNED"
 	elif shock_buildup > 0.0:

@@ -18,6 +18,7 @@ var _pass_count := 0
 var _fail_count := 0
 
 func _ready() -> void:
+	$Main.hitstop_seconds = 0.0 # frame-counted waits below assume normal time
 	attacker.active = false
 	$Main/World/RedEnemy/Attacker.active = false
 	await _frames(5)
