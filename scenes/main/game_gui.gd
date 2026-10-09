@@ -41,6 +41,23 @@ const ABILITY_ACTIONS := {
 ## regardless of menu state. main.gd's on-screen combat log is that destination.
 signal ability_triggered(text: String)
 
+## Off by default so test scenes that instance game_gui.tscn on their own keep starting from a
+## bare seeded inventory. main.tscn turns it on (see _apply_starting_loadout).
+@export var starting_loadout: bool = false
+const STARTING_MEMORY_LEVEL := 2 # 8 bytes: the four core moves plus room for a modifier or two
+const STARTING_ABILITIES := {
+	&"jump": Vector2i(2, 0),
+	&"normal_attack": Vector2i(2, 1),
+	&"guard": Vector2i(2, 3),
+	&"dash": Vector2i(2, 4),
+}
+
+## When true (the default, so test scenes that instance game_gui.tscn on its own keep working),
+## pressing an ABILITY_ACTIONS key resolves that ability's chain straight away against
+## combat_target. main.tscn turns this off: there, TriggerRouter fires each chain on the real
+## gameplay event instead (the swing landing, a parry, dodging through a hit, takeoff).
+@export var trigger_on_keypress: bool = true
+
 @onready var board: Board = $Board
 @onready var inventory: Inventory = $Inventory
 @onready var memory_system: MemorySystem = $MemorySystem
@@ -142,7 +159,7 @@ func _input(event: InputEvent) -> void:
 ## visibility. Triggering should only happen while the menu is CLOSED (visible == false) —
 ## you're "in the game," not managing your loadout.
 func _unhandled_input(event: InputEvent) -> void:
-	if visible:
+	if visible or not trigger_on_keypress:
 		return
 	for action_name in ABILITY_ACTIONS:
 		if event.is_action_pressed(action_name):
@@ -155,11 +172,17 @@ func _unhandled_input(event: InputEvent) -> void:
 ## than plain activate() so the log can show each connected perk's own contribution, not just
 ## the aggregate total.
 func _trigger_named_ability(action_name: StringName, perk_id: StringName) -> void:
+	trigger_ability(perk_id, action_name, combat_target)
+
+## Resolves perk_id's chain against target (null = resolve and log, but hit nothing) and logs
+## it via ability_triggered under `label`. Returns the EffectContext, or null if perk_id isn't
+## placed. The single trigger path for both the keypress route above and TriggerRouter.
+func trigger_ability(perk_id: StringName, label: String, target: DummyTarget) -> EffectContext:
 	var placed := ability_controller.find_placed(board, perk_id)
 	if placed == null:
-		ability_triggered.emit("%s: not placed on the board" % perk_id)
-		return
-	var result := ability_controller.ability_activator.activate_with_steps(board, placed.position, combat_target)
+		ability_triggered.emit("%s: not placed on the board" % label)
+		return null
+	var result := ability_controller.ability_activator.activate_with_steps(board, placed.position, target)
 	var context: EffectContext = result["context"]
 	var steps: Array = result["steps"]
 
@@ -173,11 +196,12 @@ func _trigger_named_ability(action_name: StringName, perk_id: StringName) -> voi
 	var detail_suffix := ", " + ", ".join(details) if not details.is_empty() else ""
 
 	var text := "%s: %s damage%s" % [
-		action_name, PerkDefinition.format_number(context.damage * context.repeat_count), detail_suffix
+		label, PerkDefinition.format_number(context.damage * context.repeat_count), detail_suffix
 	]
 	for step in steps:
 		text += "\n  " + step
 	ability_triggered.emit(text)
+	return context
 
 ## Maps a perk's class and a 0-3 rotation state to concrete output/input directions.
 ## rotation_state doubles as the output direction's GridDirection.Value directly (their int
@@ -539,6 +563,31 @@ func _seed_inventory() -> void:
 		var copies := 1 if gets_one_copy else 4
 		for i in copies:
 			inventory.add_perk(InventoryPerk.new(definition, 1))
+	if starting_loadout:
+		_apply_starting_loadout()
+
+## Abilities are perks and cost memory like any other, so with an empty board the player
+## couldn't even move. This slots a Memory perk and pre-places the core moves (taken from the
+## seeded inventory) down the Ability column, each outputting east so modifiers can chain to
+## the right. (2, 2) is left free for Special Attack.
+func _apply_starting_loadout() -> void:
+	var memory := _take_seeded(&"memory")
+	if memory:
+		inventory.remove_perk(memory)
+		memory_system.slot_perk(InventoryPerk.new(memory.definition, STARTING_MEMORY_LEVEL))
+	for id in STARTING_ABILITIES:
+		var perk := _take_seeded(id)
+		if perk:
+			inventory.remove_perk(perk)
+			var orientation := _resolve_orientation(perk.definition, GridDirection.Value.EAST)
+			board.place_perk(perk, STARTING_ABILITIES[id], orientation["output"], orientation["input"])
+
+func _take_seeded(id: StringName) -> InventoryPerk:
+	for perk in inventory.perks:
+		if perk.definition.id == id and perk.level == 1:
+			return perk
+	push_warning("Starting loadout: no %s perk in the seeded inventory" % id)
+	return null
 
 func _load_perk_definitions() -> Array[PerkDefinition]:
 	var result: Array[PerkDefinition] = []
