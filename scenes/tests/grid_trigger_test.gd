@@ -1,8 +1,8 @@
 extends Node
 ## Scripted regression check for TriggerRouter: each gameplay event resolves the matching
 ## ability's SynapseGrid chain against the right enemy (the hit landing -> Normal/Special Attack,
-## a parry -> Shield, dodging through a hit -> Dash, takeoff -> Jump over an area), keypresses no
-## longer resolve chains on their own in main.tscn, Special Attack is on a cooldown, Shield's
+## a parry -> Block, dodging through a hit -> Dash, takeoff -> Jump over an area), keypresses no
+## longer resolve chains on their own in main.tscn, Special Attack is on a cooldown, Block's
 ## level sets max Guard, and the grid is live (moves work with it open; removing a perk stops
 ## its move at once). Run headless:
 ## Godot --headless --path <project> res://scenes/tests/grid_trigger_test.tscn --quit-after 3000
@@ -27,11 +27,11 @@ func _ready() -> void:
 	# --- Starting loadout: level-2 Memory slotted, the five moves on the grid at 1 byte each.
 	_check(game_gui.memory_system.slotted_perk != null and game_gui.memory_system.slotted_perk.level == 2,
 		"starting loadout slots a level-2 Memory perk")
-	for id in [&"jump", &"normal_attack", &"special_attack", &"shield", &"dash"]:
+	for id in [&"jump", &"normal_attack", &"special_attack", &"block", &"dash"]:
 		_check(router.is_equipped(id), "starting loadout places %s" % id)
 	_check(game_gui.memory_system.get_used(game_gui.board) == 5 and game_gui.memory_system.get_capacity() == 8,
 		"5 abilities use 5 of 8 bytes (%d / %d)" % [game_gui.memory_system.get_used(game_gui.board), game_gui.memory_system.get_capacity()])
-	_check(is_equal_approx(player.max_guard, 100.0), "level-1 Shield gives max Guard 100 (%s)" % player.max_guard)
+	_check(is_equal_approx(player.max_guard, 100.0), "level-1 Block gives max Guard 100 (%s)" % player.max_guard)
 
 	# --- The grid is live: with it open, moves still work.
 	game_gui.visible = true
@@ -45,12 +45,12 @@ func _ready() -> void:
 	await _frames(90)
 	game_gui.visible = false
 
-	# --- Removing Shield mid-block stops the block at once and zeroes max Guard.
+	# --- Removing the Block perk mid-block stops the block at once and zeroes max Guard.
 	player.block(true)
-	_check(player.is_blocking(), "blocking with Shield placed")
-	_remove(&"shield")
+	_check(player.is_blocking(), "blocking with the Block perk placed")
+	_remove(&"block")
 	await _frames(2)
-	_check(not player.is_blocking() and player.max_guard == 0.0, "Shield removed mid-block: block ends, no Guard")
+	_check(not player.is_blocking() and player.max_guard == 0.0, "Block perk removed mid-block: block ends, no Guard")
 
 	# --- Abilities are perks: take them off the grid and the moves stop working.
 	_clear_board()
@@ -62,8 +62,23 @@ func _ready() -> void:
 	_check(player.is_on_floor(), "no Jump perk: can't jump")
 	_check(not player.dash(), "no Dash perk: can't dodge")
 	player.block(true)
-	_check(not player.is_blocking(), "no Shield perk: can't block or parry")
+	_check(not player.is_blocking(), "no Block perk: can't block or parry")
 	_check(not player.special_attack(), "no Special Attack perk: can't use it")
+	var missing: Array[StringName] = []
+	player.ability_missing.connect(func(id): missing.append(id))
+	player.jump()
+	player.block(true)
+	_check(missing == [&"jump", &"block"], "pressing a missing move reports which perk is missing (%s)" % [missing])
+	var cue: Label = $Main._missing_cue
+	_check(cue != null and cue.visible and cue.text == "No Block perk on the grid", "...and flashes a cue naming it")
+	await _frames(int($Main.MISSING_CUE_SECONDS * 60) + 10)
+	_check(not cue.visible, "...which goes away on its own")
+
+	# --- Shield is a passive Core perk: placed anywhere, it raises the flat shield stat.
+	_check(game_gui.player.shield == 0, "no Shield perk: no shield")
+	_place(&"shield", Vector2i(0, 0), -1, -1)
+	_check(game_gui.player.shield == 20, "Shield placed off the ability column: shield 20 (%d)" % game_gui.player.shield)
+	_remove(&"shield")
 
 	# --- Normal Attack -> Fire on the board: the landed swing deals the chain's damage.
 	_place(&"normal_attack", Vector2i(2, 0), GridDirection.Value.EAST, -1)
@@ -84,23 +99,23 @@ func _ready() -> void:
 	_check(player.special_attack(), "Special Attack is ready again after its cooldown")
 	await _frames(20)
 
-	# --- Parry fires the Shield chain at the attacker.
+	# --- Parry fires the Block chain at the attacker.
 	var before := enemy.dummy_target.damage_taken
 	_parry_hit_from(enemy)
-	_check(is_equal_approx(enemy.dummy_target.damage_taken, before), "no Shield on the board: Block does nothing, so nothing fires")
-	_place(&"shield", Vector2i(2, 2), GridDirection.Value.EAST, -1)
+	_check(is_equal_approx(enemy.dummy_target.damage_taken, before), "no Block on the board: blocking does nothing, so nothing fires")
+	_place(&"block", Vector2i(2, 2), GridDirection.Value.EAST, -1)
 	_place(&"shock", Vector2i(3, 2), GridDirection.Value.EAST, GridDirection.Value.WEST)
-	var guard_expected := router.fire(&"shield", null).damage
+	var guard_expected := router.fire(&"block", null).damage
 	before = enemy.dummy_target.damage_taken
 	_parry_hit_from(enemy)
 	_check(guard_expected > 0.0 and is_equal_approx(enemy.dummy_target.damage_taken - before, guard_expected),
-		"Shield -> Shock fires at the attacker on a parry, with no base hit of its own (%s)" % guard_expected)
+		"Block -> Shock fires at the attacker on a parry, with no base hit of its own (%s)" % guard_expected)
 	before = enemy.dummy_target.damage_taken
 	player.block(true)
 	await _frames(20)
 	player.receive_hit(Hit.new(10.0, Hit.Kind.PARRYABLE, enemy))
 	player.block(false)
-	_check(is_equal_approx(enemy.dummy_target.damage_taken, before), "a plain block does not fire the Shield chain")
+	_check(is_equal_approx(enemy.dummy_target.damage_taken, before), "a plain block does not fire the Block chain")
 
 	# --- Dodging through a hit fires the Dash chain at the attacker.
 	_place(&"dash", Vector2i(2, 3), GridDirection.Value.EAST, -1)

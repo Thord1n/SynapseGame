@@ -16,7 +16,12 @@ const COMBAT_LOG_MAX_ENTRIES := 3
 @onready var player: PlayerController = $World/Player
 @onready var player_status_label: Label = $HudLayer/PlayerStatusLabel
 
+## How long the "missing perk" cue stays on screen.
+const MISSING_CUE_SECONDS := 1.2
+
 var _combat_log_lines: Array[String] = []
+var _missing_cue: Label
+var _missing_cue_timer: SceneTreeTimer
 
 func _ready() -> void:
 	_register_toggle_action()
@@ -38,7 +43,27 @@ func _wire_player_hud() -> void:
 	player.hurt.connect(func(hit: Hit): _on_ability_triggered("Hit for %s%s" % [PerkDefinition.format_number(hit.damage), " (unblockable)" if hit.kind == Hit.Kind.UNBLOCKABLE else ""]))
 	player.guard_broken.connect(func(): _on_ability_triggered("GUARD BROKEN"))
 	player.died.connect(func(): _on_ability_triggered("Died, back to spawn"))
+	player.ability_missing.connect(_show_missing_cue)
 	_refresh_player_status()
+
+## Pressing a move whose perk isn't on the grid flashes a short cue naming the perk (Thomas:
+## only when the action is pressed, no permanent marker).
+func _show_missing_cue(ability_id: StringName) -> void:
+	if _missing_cue == null:
+		_missing_cue = Label.new()
+		_missing_cue.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+		_missing_cue.offset_top = 120.0
+		_missing_cue.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		_missing_cue.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_missing_cue.add_theme_color_override("font_color", Color(1.0, 0.55, 0.4))
+		$HudLayer.add_child(_missing_cue)
+	_missing_cue.text = "No %s perk on the grid" % String(ability_id).capitalize()
+	_missing_cue.visible = true
+	var timer := get_tree().create_timer(MISSING_CUE_SECONDS)
+	_missing_cue_timer = timer
+	timer.timeout.connect(func():
+		if _missing_cue_timer == timer:
+			_missing_cue.visible = false)
 
 func _refresh_player_status() -> void:
 	player_status_label.text = "HP %d / %d\nGuard %d / %d" % [

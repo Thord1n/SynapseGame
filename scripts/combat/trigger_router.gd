@@ -7,7 +7,7 @@ extends Node
 ##
 ## Event -> ability chain -> target:
 ## - attack_landed  (on_hit)           -> the swing's ability (normal/special attack) -> the enemy hit
-## - parried        (on_parry)         -> shield -> the attacker
+## - parried        (on_parry)         -> block  -> the attacker
 ## - dodged_through (on_dodge_through) -> dash   -> the attacker
 ## - jump_started   (on_jump_start)    -> jump   -> every enemy within an area around the
 ##   takeoff point (jump_radius, widened by Explosion/Linger in the chain)
@@ -15,12 +15,12 @@ extends Node
 ##
 ## Also owns the "is it equipped" rule: it points PlayerController.ability_gate at the board,
 ## so a move whose ability perk isn't placed doesn't happen at all (Thomas: abilities are perks),
-## and keeps the player's max Guard in step with the Shield perk's level.
+## and keeps the player's max Guard in step with the Block perk's level.
 
 const EVENT_LABELS := {
 	&"normal_attack": "Normal Attack hit",
 	&"special_attack": "Special Attack hit",
-	&"shield": "Parry",
+	&"block": "Parry",
 	&"dash": "Dodge through",
 	&"jump": "Jump",
 }
@@ -38,7 +38,7 @@ const EVENT_LABELS := {
 func _ready() -> void:
 	player.ability_gate = is_equipped
 	player.attack_landed.connect(_on_attack_landed)
-	player.parried.connect(func(hit: Hit): fire(&"shield", _enemy_of(hit)))
+	player.parried.connect(func(hit: Hit): fire(&"block", _enemy_of(hit)))
 	player.dodged_through.connect(func(hit: Hit): fire(&"dash", _enemy_of(hit)))
 	player.jump_started.connect(_on_jump_started)
 	game_gui.board.board_recomputed.connect(func(_dirty): _sync_max_guard())
@@ -79,7 +79,7 @@ func _on_attack_landed(enemy: Enemy, ability_id: StringName) -> void:
 	fire(ability_id, enemy)
 
 func _sync_max_guard() -> void:
-	player.set_max_guard(ShieldPerkDefinition.max_guard_on(game_gui.board))
+	player.set_max_guard(BlockPerkDefinition.max_guard_on(game_gui.board))
 
 static func _enemy_of(hit: Hit) -> Enemy:
 	return hit.source as Enemy

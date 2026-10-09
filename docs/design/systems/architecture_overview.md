@@ -18,7 +18,7 @@ scripts/
 ├── board/     — the board/connection/memory subsystem (Node- and RefCounted-based)
 ├── perks/     — perk data model + inventory (Resource- and RefCounted-based)
 ├── combat/    — effect application: EffectContext, DummyTarget, AbilityActivator, Enemy
-└── player/    — PlayerCharacter (Health), AbilityController (§4), and
+└── player/    — PlayerCharacter (Health/Shield), AbilityController (§4), and
 				 PlayerController (World/Player's CharacterBody2D — movement/jump/melee-hitbox
 				 Normal Attack are real, Special Attack/Dash/Block's actual effect are stubs;
 				 ROADMAP.md item 2)
@@ -52,7 +52,8 @@ PerkDefinition (Resource)          — immutable template: id, display_name, des
   ├── AreaPerkDefinition            — + radius, max_radius (float)
   ├── EchoPerkDefinition            — + echoes (int)
   ├── ChainPerkDefinition           — + chains (int)
-  ├── ShieldPerkDefinition          — the Block/Parry ability; reuses base_damage as max Guard
+  ├── ShieldPerkDefinition          — no new fields; reuses base_damage as a shield amount
+  ├── BlockPerkDefinition           — the Block/Parry ability; reuses base_damage as max Guard
   │                                    instead of combat damage (see §4) — apply_effect() is a
   │                                    no-op override so it can never leak into combat math
   └── MemoryPerkDefinition          — same reuse-base_damage pattern as Shield, this time as a
@@ -81,8 +82,8 @@ MemorySystem (Node)                — capacity (integer bytes) derived from whi
 									  MemoryUpgrade/base_capacity (an earlier, now-deleted
 									  mechanism) used to own this instead.
 
-PlayerCharacter (Node)             — Health (flat). scripts/player/. (Shield is now the
-									  Block/Parry ability; its level sets max Guard, see §4.)
+PlayerCharacter (Node)             — Health (flat) + Shield (derived from placed Shield perks;
+									  see §4). scripts/player/.
 ```
 
 `input_accepts`/`output_accepts` are `Array[PerkClass]` — which classes that side will link
@@ -191,7 +192,7 @@ visually was judged too failure-prone; building the tree in GDScript is ordinary
 reviewable code instead.
 
 **Layout**: `HBoxContainer` of four panels — Inventory (left), Board (center, 5x5
-`GridContainer`), Memory, Player (right, Health/max Guard + the control legend). Plus two
+`GridContainer`), Memory, Player (right, Health/Shield + the control legend). Plus two
 floating overlays added directly to the root `Control`: a hover tooltip and a "held perk"
 symbol that snaps to and
 follows the cursor.
@@ -265,9 +266,10 @@ just above.
 fixed `PerkDefinition.id`s — `jump`→`jump`, `dash`→`dash`, `attack_normal`→`normal_attack`,
 `attack_special`→`special_attack`. This is the "fixed named abilities" model: an action always
 means that specific perk, wherever it's currently placed among the 5 Ability slots (not a
-fixed board position). Shield isn't in this map: it's the Block button's ability, handled by
-PlayerController, its chain fires on a parry (TriggerRouter), and its scaled `base_damage` is
-read as max Guard (`ShieldPerkDefinition.max_guard_on()`), never as damage.
+fixed board position) — contrast Shield, which isn't in this map at all since it's a passive
+Core perk (a physical shield, Thomas), never a triggered action (see `PlayerCharacter.recompute_shield_from_board()`, which sums
+`get_scaled_base_damage()` — read as a shield amount, not damage — across every placed Ability
+perk with `id == "shield"`).
 - `_setup_input_actions()` registers each action on Godot's `InputMap` singleton *at runtime*
   (`InputMap.add_action()` + `action_add_event()`) rather than hand-editing `project.godot`'s
   `[input]` section — every action gets both a keyboard/mouse binding and a gamepad binding

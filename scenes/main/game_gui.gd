@@ -26,8 +26,9 @@ const ABILITY_SLOT_POSITIONS: Array[Vector2i] = [
 const ABILITY_SLOT_BORDER := 3.0
 
 ## Fixed named abilities (see AbilityController): an input action always means this specific
-## perk id, wherever it's currently placed on the board — not a fixed board slot. Shield (the
-## Block button) is absent: PlayerController handles Block itself, and its chain fires on a parry.
+## perk id, wherever it's currently placed on the board — not a fixed board slot. Block is
+## absent: PlayerController handles it, and its chain fires on a parry (TriggerRouter). Shield is
+## a passive stat read by PlayerCharacter, never triggered.
 ## Keys match project.godot's [input] section exactly (case-sensitive) — these are real,
 ## editor-configured Input Map actions now, not runtime-registered here (see _ready()).
 const ABILITY_ACTIONS := {
@@ -50,7 +51,7 @@ const STARTING_ABILITIES := {
 	&"jump": Vector2i(2, 0),
 	&"normal_attack": Vector2i(2, 1),
 	&"special_attack": Vector2i(2, 2),
-	&"shield": Vector2i(2, 3),
+	&"block": Vector2i(2, 3),
 	&"dash": Vector2i(2, 4),
 }
 
@@ -81,6 +82,7 @@ var memory_slot_button: Button
 ## on a successful placement/pickup so it never lingers past being relevant.
 var status_label: Label
 var health_label: Label
+var shield_label: Label
 var guard_label: Label
 
 var tooltip_panel: PanelContainer
@@ -125,7 +127,10 @@ func _ready() -> void:
 	_seed_inventory()
 
 	board.board_recomputed.connect(func(_dirty): _refresh_ui())
+	board.board_recomputed.connect(func(_dirty): player.recompute_shield_from_board(board))
 	inventory.inventory_changed.connect(_refresh_ui)
+
+	player.recompute_shield_from_board(board)
 
 	_refresh_ui()
 
@@ -452,7 +457,7 @@ func _build_memory_panel() -> Control:
 
 	return vbox
 
-## Health/max Guard readout plus the control scheme, so the Ability-perk-to-control wiring (see
+## Health/Shield/max Guard readout plus the control scheme, so the Ability-perk-to-control wiring (see
 ## ABILITY_ACTIONS/_unhandled_input) is discoverable without reading source.
 func _build_player_panel() -> Control:
 	var vbox := VBoxContainer.new()
@@ -469,6 +474,10 @@ func _build_player_panel() -> Control:
 	health_label = Label.new()
 	health_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(health_label)
+
+	shield_label = Label.new()
+	shield_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(shield_label)
 
 	guard_label = Label.new()
 	guard_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -909,7 +918,8 @@ func _refresh_memory_slot() -> void:
 
 func _refresh_player_panel() -> void:
 	health_label.text = "Health: %d / %d" % [player.current_health, player.max_health]
-	guard_label.text = "Max Guard: %d" % ShieldPerkDefinition.max_guard_on(board)
+	shield_label.text = "Shield: %d" % player.shield
+	guard_label.text = "Max Guard: %d" % BlockPerkDefinition.max_guard_on(board)
 
 func _refresh_held_symbol() -> void:
 	if _held.is_empty():

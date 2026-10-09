@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="BlockPerkDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/perks/block_perk_definition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"block"
+display_name = "Block"
+description = "Block (hold) and Parry (press just before a hit) on one button. Its level sets max Guard. Modifiers chained here fire on a parry."
+input_accepts = Array[int]([2])
+base_damage = 100.0

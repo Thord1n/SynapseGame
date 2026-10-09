@@ -2,7 +2,7 @@ class_name PlayerController
 extends CharacterBody2D
 ## The player's physical actions. Reads project.godot's Input Map actions (Left/Right/Jump/
 ## Block/Dash/Normal_attack/Special_attack, added directly in the editor): movement, Jump,
-## Shield (Block + Parry on one button), Dodge (the Dash action), and Normal/Special Attack (a
+## Block (Block + Parry on one button), Dodge (the Dash action), and Normal/Special Attack (a
 ## timed melee hitbox — see `hitbox`/_on_hitbox_area_entered). Each move works only while its
 ## ability perk is on the grid (see ability_gate); what the rest of its chain adds is resolved
 ## when the matching event fires (see the signals below and TriggerRouter,
@@ -16,8 +16,8 @@ extends CharacterBody2D
 ## Defense (receive_hit): the player has Health, and a Guard meter used only by Block. Per the
 ## Designer's numbers (design/answers-for-programmer.md), all exported so they can be tuned:
 ## - Parry: Block pressed within `parry_window` before a parryable hit lands. No damage, emits
-##   `parried`. Block and Parry are one ability (the Shield perk) on one button: hold = block, a
-##   press just before impact = parry. Shield's level sets max_guard (see set_max_guard).
+##   `parried`. Block and Parry are one ability (the Block perk) on one button: hold = block, a
+##   press just before impact = parry. Block's level sets max_guard (see set_max_guard).
 ## - Block: held longer than that. Takes `block_damage_taken` of the damage and drains Guard;
 ##   Guard at 0 breaks (stunned for `guard_break_stun`). Guard regenerates when not blocking.
 ## - Unblockable hits ignore Block and Parry entirely: only a dodge avoids them.
@@ -50,6 +50,8 @@ signal jump_started
 ## &"special_attack"); TriggerRouter resolves that ability's grid chain against the enemy.
 signal attack_landed(enemy: Enemy, ability_id: StringName)
 signal guard_broken
+## The player tried a move whose ability perk isn't on the grid (see _require).
+signal ability_missing(ability_id: StringName)
 ## Health hit 0. The test level has no game-over yet: the player is restored at their spawn
 ## point right after this fires (see _die).
 signal died
@@ -98,13 +100,21 @@ var _dodge_direction := 1
 var _special_ready_at := -INF
 
 ## The shared "is this ability equipped" check (Thomas: abilities are perks — no perk on the
-## grid, no move). Takes an ability perk id (&"jump", &"shield", &"dash", &"normal_attack",
+## grid, no move). Takes an ability perk id (&"jump", &"block", &"dash", &"normal_attack",
 ## &"special_attack"). Checked live, so removing a perk mid-action stops that move at once. TriggerRouter points it at the SynapseGrid board; the default allows
 ## everything so scenes without a board (unit-style tests) still move.
 var ability_gate: Callable = func(_ability_id: StringName) -> bool: return true
 
 func has_ability(ability_id: StringName) -> bool:
 	return ability_gate.call(ability_id)
+
+## has_ability for a move the player just tried: when the perk is missing, also emits
+## ability_missing so the HUD can flash a brief cue (Thomas: on press only, no lasting marker).
+func _require(ability_id: StringName) -> bool:
+	if has_ability(ability_id):
+		return true
+	ability_missing.emit(ability_id)
+	return false
 var _swing_ability: StringName = &"normal_attack"
 
 @onready var hitbox: Area2D = $AttackHitbox_Area2D
@@ -118,8 +128,8 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	_time += delta
-	if _is_blocking and not has_ability(&"shield"):
-		block(false) # Shield taken off the grid mid-block
+	if _is_blocking and not has_ability(&"block"):
+		block(false) # Block taken off the grid mid-block
 	_regen_guard(delta)
 	if is_dodging():
 		_dodge_step(delta)
@@ -149,7 +159,7 @@ func move(delta: float) -> void:
 ## Wired to the "Jump" action in _unhandled_input() below.
 ## Emits jump_started at takeoff, which TriggerRouter turns into the Jump chain.
 func jump() -> void:
-	if is_on_floor() and not is_stunned() and has_ability(&"jump"):
+	if is_on_floor() and not is_stunned() and _require(&"jump"):
 		velocity.y = JUMP_VELOCITY
 		jump_started.emit()
 
@@ -189,7 +199,7 @@ func normal_attack() -> void:
 ## special_attack_cooldown (the Designer's plain cooldown, no resource cost). Returns false while
 ## cooling down, stunned or dodging.
 func special_attack() -> bool:
-	if _time < _special_ready_at or is_stunned() or is_dodging() or not has_ability(&"special_attack"):
+	if _time < _special_ready_at or is_stunned() or is_dodging() or not _require(&"special_attack"):
 		return false
 	_special_ready_at = _time + special_attack_cooldown
 	_swing(&"special_attack")
@@ -199,7 +209,7 @@ func special_attack_cooldown_left() -> float:
 	return maxf(0.0, _special_ready_at - _time)
 
 func _swing(ability_id: StringName) -> void:
-	if is_stunned() or is_dodging() or not has_ability(ability_id):
+	if is_stunned() or is_dodging() or not _require(ability_id):
 		return
 	_swing_ability = ability_id
 	hitbox.position.x = abs(hitbox.position.x) * facing_direction
@@ -211,7 +221,7 @@ func _swing(ability_id: StringName) -> void:
 ## always available; the grid's Dash chain fires when a hit is dodged through (dodged_through). Returns false if it couldn't start (cooldown, stunned,
 ## already dodging).
 func dash() -> bool:
-	if is_dodging() or is_stunned() or not has_ability(&"dash"):
+	if is_dodging() or is_stunned() or not _require(&"dash"):
 		return false
 	if _time < _dodge_started_at + dodge_duration + dodge_cooldown:
 		return false
@@ -245,7 +255,7 @@ func block(active: bool) -> void:
 	if active == _is_blocking:
 		return
 	if active:
-		if is_stunned() or is_dodging() or not has_ability(&"shield"):
+		if is_stunned() or is_dodging() or not _require(&"block"):
 			return
 		_block_pressed_at = _time
 	else:
@@ -292,7 +302,7 @@ func _regen_guard(delta: float) -> void:
 		return
 	_set_guard(guard + guard_regen_per_second * delta)
 
-## Max Guard comes from the Shield perk's level (TriggerRouter calls this when the board
+## Max Guard comes from the Block perk's level (TriggerRouter calls this when the board
 ## changes). A full meter stays full; otherwise Guard is clamped to the new maximum.
 func set_max_guard(value: float) -> void:
 	var was_full := guard >= max_guard
