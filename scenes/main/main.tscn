@@ -63,6 +63,7 @@ shape = SubResource("CapsuleShape2D_l3cfh")
 [node name="Enemy" type="Area2D" parent="World"]
 position = Vector2(950, 470)
 script = ExtResource("4")
+patrol_distance = 120.0
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="World/Enemy"]
 shape = SubResource("RectangleShape2D_enemy")
@@ -92,6 +93,7 @@ shape = SubResource("RectangleShape2D_reach")
 [node name="RedEnemy" type="Area2D" parent="World"]
 position = Vector2(220, 470)
 script = ExtResource("4")
+patrol_distance = 120.0
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="World/RedEnemy"]
 shape = SubResource("RectangleShape2D_enemy")

@@ -13,6 +13,8 @@ var _pass_count := 0
 var _fail_count := 0
 
 func _ready() -> void:
+	$Main.hitstop_seconds = 0.0 # frame-counted waits below assume normal time
+	for e in [$Main/World/Enemy, $Main/World/RedEnemy]: e.patrol_distance = 0.0 # fixed positions
 	white_attacker.active = false
 	red_attacker.active = false
 	await _frames(30) # settle on the floor

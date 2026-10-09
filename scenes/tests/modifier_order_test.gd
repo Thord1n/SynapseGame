@@ -2,7 +2,7 @@ extends Node
 ## Scripted regression check for Thomas's modifier order rule and Shock buildup, against the
 ## real main.tscn: sources (Fire/Ice/Shock) work anywhere; amplifiers (Echo, Linger) only
 ## act on source effects earlier in the chain and are flagged as no-ops otherwise; Explosion
-## and Chain work on the plain hit; Echo repeats upstream effects at 60% after a delay; enough Shock
+## and Chain work on the plain hit; Echo repeats upstream source effects as fading bounces; enough Shock
 ## stuns an enemy, cancelling its telegraph, then grants stun immunity. Run headless:
 ## Godot --headless --path <project> res://scenes/tests/modifier_order_test.tscn --quit-after 3000
 
@@ -18,6 +18,8 @@ var _pass_count := 0
 var _fail_count := 0
 
 func _ready() -> void:
+	$Main.hitstop_seconds = 0.0 # frame-counted waits below assume normal time
+	for e in [$Main/World/Enemy, $Main/World/RedEnemy]: e.patrol_distance = 0.0 # fixed positions
 	attacker.active = false
 	$Main/World/RedEnemy/Attacker.active = false
 	await _frames(5)
@@ -32,7 +34,7 @@ func _ready() -> void:
 	game_gui._refresh_ui()
 	_check(game_gui._board_buttons[ABILITY_POS + Vector2i(1, 0)].modulate == GameGui.COLOR_IDLE, "the board greys out the idle Echo")
 
-	# --- Echo after a source repeats it at 60% after a delay.
+	# --- Echo after a source repeats it at 70% after a delay.
 	_build_chain([&"fire", &"echo"])
 	var before := enemy.dummy_target.damage_taken
 	ctx = router.fire(&"normal_attack", enemy)
@@ -41,7 +43,24 @@ func _ready() -> void:
 	await _seconds(0.2)
 	_check(is_equal_approx(enemy.dummy_target.damage_taken - before, 15.0), "the echo hasn't landed before its delay")
 	await _seconds(0.2)
-	_check(is_equal_approx(enemy.dummy_target.damage_taken - before, 18.0), "the echo lands Fire again at 60% (+3) after ~0.3 s")
+	_check(is_equal_approx(enemy.dummy_target.damage_taken - before, 18.5), "the echo lands Fire again at 70% (+3.5) after ~0.3 s")
+
+	# --- Level N = N fading bounces; a second Echo doesn't echo the first one's bounces.
+	var echo_def: EchoPerkDefinition = load("res://resources/perks/modifier/echo.tres")
+	var probe := EffectContext.new()
+	probe.add_effect(&"fire", ElementalPerkDefinition.Element.FIRE, 10.0)
+	echo_def.apply_effect(3, probe)
+	var bounces: Array = probe.delayed.map(func(d): return snappedf(d["effects"][0]["damage"], 0.001))
+	_check(bounces == [7.0, 4.9, 3.43] and is_equal_approx(probe.delayed[2]["delay"], 0.9),
+		"level-3 Echo: 3 bounces at 70%%, 49%%, 34.3%%, 0.3 s apart (%s)" % [bounces])
+	var twice := EffectContext.new() # Fire -> Echo -> Echo (the board is too narrow for it)
+	twice.add_effect(&"fire", ElementalPerkDefinition.Element.FIRE, 5.0)
+	echo_def.apply_effect(1, twice)
+	echo_def.apply_effect(1, twice)
+	bounces = twice.delayed.map(func(d): return snappedf(d["effects"][0]["damage"], 0.001))
+	_check(bounces == [3.5, 3.5], "Fire -> Echo -> Echo: each Echo bounces the Fire once, no echo of an echo (%s)" % [bounces])
+	var costs: Array = range(1, 7).map(func(lv): return InventoryPerk.new(echo_def, lv).get_memory_cost())
+	_check(costs == [2, 3, 5, 8, 12, 21], "Echo costs 2, 3, 5, 8, 12, 21 bytes at levels 1-6 (%s)" % [costs])
 
 	# --- Chain and Explosion work on the plain hit; Linger needs a source.
 	_build_chain([&"chain"])
@@ -82,7 +101,7 @@ func _ready() -> void:
 	attacker.active = false
 	await _seconds(enemy.stun_immunity)
 
-	# --- Buildup decays after 2 s without Shock; Echo's repeat adds 60% buildup.
+	# --- Buildup decays after 2 s without Shock; Echo's bounce adds 70% buildup.
 	router.fire(&"normal_attack", enemy)
 	_check(is_equal_approx(enemy.shock_buildup, 35.0), "buildup again once immunity ends")
 	await _seconds(enemy.shock_decay_delay + 0.1)
@@ -90,7 +109,7 @@ func _ready() -> void:
 	_build_chain([&"shock", &"echo"])
 	router.fire(&"normal_attack", enemy)
 	await _seconds(0.4)
-	_check(is_equal_approx(enemy.shock_buildup, 35.0 + 21.0), "Shock -> Echo: the echo adds 60% buildup (+21)")
+	_check(is_equal_approx(enemy.shock_buildup, 35.0 + 24.5), "Shock -> Echo: the bounce adds 70% buildup (+24.5)")
 
 	await _seconds(0.5)
 	print("Result: %d passed, %d failed" % [_pass_count, _fail_count])
