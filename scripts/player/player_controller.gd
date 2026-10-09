@@ -22,8 +22,9 @@ extends CharacterBody2D
 ##
 ## Defense (receive_hit): the player has Health, and a Guard meter used only by Block. Per the
 ## Designer's numbers (design/answers-for-programmer.md), all exported so they can be tuned:
-## - Parry: Block pressed within `parry_window` before a parryable hit lands. No damage, +1
-##   Charge, emits `parried`.
+## - Parry: Block pressed within `parry_window` before a parryable hit lands. No damage, emits
+##   `parried`. Block and Parry are one ability ("Guard") on one button: hold = block, a press
+##   just before impact = parry.
 ## - Block: held longer than that. Takes `block_damage_taken` of the damage and drains Guard;
 ##   Guard at 0 breaks (stunned for `guard_break_stun`). Guard regenerates when not blocking.
 ## - Unblockable hits ignore Block and Parry entirely: only a dodge avoids them.
@@ -45,7 +46,6 @@ const PLACEHOLDER_MELEE_DAMAGE := 10.0
 
 signal health_changed(current: float, maximum: float)
 signal guard_changed(current: float, maximum: float)
-signal charge_changed(current: int, maximum: int)
 signal hurt(hit: Hit)
 signal blocked(hit: Hit)
 signal parried(hit: Hit)
@@ -70,7 +70,6 @@ signal died
 ## Not blocking for this long before Guard starts regenerating.
 @export var guard_regen_delay: float = 0.5
 @export var guard_break_stun: float = 0.8
-@export var max_charge: int = 3
 
 @export_group("Dodge")
 @export var dodge_distance: float = 120.0
@@ -85,7 +84,6 @@ var facing_direction := 1  # -1 left, 1 right
 
 var health: float
 var guard: float
-var charge: int = 0
 var spawn_position: Vector2
 
 ## Own clock advanced in _physics_process, so timing windows behave the same under headless
@@ -245,7 +243,6 @@ func receive_hit(hit: Hit) -> Hit.Result:
 		return Hit.Result.DODGED
 	if hit.kind == Hit.Kind.PARRYABLE and _is_blocking:
 		if _time - _block_pressed_at <= parry_window:
-			_set_charge(charge + 1)
 			parried.emit(hit)
 			return Hit.Result.PARRIED
 		_set_guard(guard - guard_drain_per_block)
@@ -257,13 +254,6 @@ func receive_hit(hit: Hit) -> Hit.Result:
 	_take_damage(hit.damage)
 	hurt.emit(hit)
 	return Hit.Result.HIT
-
-## Spends Charge (the Special Attack's cost per the design doc). False if there isn't enough.
-func spend_charge(amount: int = 1) -> bool:
-	if charge < amount:
-		return false
-	_set_charge(charge - amount)
-	return true
 
 func _take_damage(amount: float) -> void:
 	health = max(0.0, health - amount)
@@ -288,12 +278,6 @@ func _set_guard(value: float) -> void:
 	if clamped != guard:
 		guard = clamped
 		guard_changed.emit(guard, max_guard)
-
-func _set_charge(value: int) -> void:
-	var clamped := clampi(value, 0, max_charge)
-	if clamped != charge:
-		charge = clamped
-		charge_changed.emit(charge, max_charge)
 
 ## No game-over screen in the test level yet: announce it, then put the player back at the
 ## spawn point with full Health and Guard.

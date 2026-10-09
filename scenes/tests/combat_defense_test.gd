@@ -25,7 +25,7 @@ func _ready() -> void:
 	player.block(true)
 	r = player.receive_hit(Hit.new(15.0))
 	_check(r == Hit.Result.PARRIED, "Block pressed within the parry window parries")
-	_check(is_equal_approx(player.health, 85.0) and player.charge == 1, "parry takes no damage and grants +1 Charge")
+	_check(is_equal_approx(player.health, 85.0) and is_equal_approx(player.guard, player.max_guard), "parry takes no damage and costs no Guard")
 	player.block(false)
 
 	# --- Block: held longer than the window
