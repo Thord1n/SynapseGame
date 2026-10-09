@@ -12,13 +12,7 @@ code-level map.
 
 ---
 
-## 1. No persistence
-
-Nothing saves or loads inventory, board layout, or the Memory slot between runs. This mattered
-less when the project was purely an editor prototype; it matters more now that `main.tscn` is
-a real `run/main_scene` with a Tab-toggle menu and an actual game view — every relaunch starts
-from the seeded-inventory, empty-board, unslotted-memory state (which also means: no board
-placement is possible at all until you re-slot a Memory perk every time).
+## 1. ~~No persistence~~ (resolved, see "Resolved" below; numbering kept so references to items 2+ elsewhere stay valid)
 
 ## 2. Attacks aren't routed through the real perk-damage system yet
 
@@ -75,6 +69,12 @@ a game loop (items 1–2 above) to actually play through.
 
 ## Resolved (for the record — see `SESSION_SUMMARY.md` for the full narrative)
 
+- **No persistence** — `SaveSystem` (`scripts/save/save_system.gd`) saves inventory, board
+  layout (positions + chosen orientations) and the Memory slot to `user://savegame.json` as
+  versioned JSON, by perk id + level. `GameGui.save_path` turns it on (set in `main.tscn`, empty
+  by default so test scenes never touch a save); it loads on startup, falls back to the seeded
+  inventory when there's no usable save, and autosaves at the end of any frame that changed
+  state. `GameGui.reset_save()` wipes it. Covered by `scenes/tests/save_load_test.tscn`.
 - **No real target/enemy model** — `Enemy` (`scripts/combat/enemy.gd`, an `Area2D` in
   `main.tscn`'s `World`) is a persistent, visible, invincible dummy; ability triggers deal
   damage to it via `GameGui.combat_target` instead of a throwaway `DummyTarget` that reset

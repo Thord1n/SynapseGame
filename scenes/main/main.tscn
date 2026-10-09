@@ -81,6 +81,7 @@ position = Vector2(576, 324)
 layer = 2
 
 [node name="GameGui" parent="MenuLayer" instance=ExtResource("2")]
+save_path = "user://savegame.json"
 
 [node name="HudLayer" type="CanvasLayer" parent="."]
 
