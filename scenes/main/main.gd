@@ -13,6 +13,7 @@ const COMBAT_LOG_MAX_ENTRIES := 3
 @onready var combat_log_label: Label = $HudLayer/CombatLogLabel
 @onready var enemy: Enemy = $World/Enemy
 @onready var player: PlayerController = $World/Player
+@onready var player_status_label: Label = $HudLayer/PlayerStatusLabel
 
 var _combat_log_lines: Array[String] = []
 
@@ -24,6 +25,25 @@ func _ready() -> void:
 	# throwaway target that reset every press — see GameGui.combat_target's own doc comment.
 	game_gui.combat_target = enemy.dummy_target
 	player.menu = game_gui
+	_wire_player_hud()
+
+## HP/Guard/Charge readout plus a combat-log line for each defensive outcome, so block/parry/
+## dodge timing can be judged while playing without a debugger.
+func _wire_player_hud() -> void:
+	for sig in [player.health_changed, player.guard_changed, player.charge_changed]:
+		sig.connect(func(_a, _b): _refresh_player_status())
+	player.parried.connect(func(_hit): _on_ability_triggered("PARRY! +1 Charge"))
+	player.blocked.connect(func(hit: Hit): _on_ability_triggered("Blocked (%s dmg through)" % PerkDefinition.format_number(hit.damage * player.block_damage_taken)))
+	player.dodged_through.connect(func(_hit): _on_ability_triggered("Dodged through"))
+	player.hurt.connect(func(hit: Hit): _on_ability_triggered("Hit for %s%s" % [PerkDefinition.format_number(hit.damage), " (unblockable)" if hit.kind == Hit.Kind.UNBLOCKABLE else ""]))
+	player.guard_broken.connect(func(): _on_ability_triggered("GUARD BROKEN"))
+	player.died.connect(func(): _on_ability_triggered("Died, back to spawn"))
+	_refresh_player_status()
+
+func _refresh_player_status() -> void:
+	player_status_label.text = "HP %d / %d\nGuard %d / %d\nCharge %d / %d" % [
+		player.health, player.max_health, player.guard, player.max_guard, player.charge, player.max_charge
+	]
 
 ## Not in project.godot's [input] section (unlike Jump/Dash/Normal_attack/Special_attack/Block/
 ## Left/Right/Up/Down, all added directly in the editor) — registered at runtime instead, same
