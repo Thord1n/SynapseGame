@@ -14,6 +14,8 @@ const CELL_SIZE := Vector2(72, 72)
 const SYMBOL_INSET := 8.0
 const COLOR_HELD := Color(1.0, 0.85, 0.3)
 const COLOR_NORMAL := Color(1, 1, 1)
+## Amplifier with nothing upstream to act on (see _idle_amplifier_positions).
+const COLOR_IDLE := Color(1, 1, 1, 0.35)
 const PERK_DEFINITIONS_DIR := "res://resources/perks/"
 
 ## Board positions restricted to Ability-class perks (see Board.set_cell_restriction).
@@ -187,8 +189,8 @@ func trigger_ability(perk_id: StringName, label: String, target: DummyTarget) ->
 	var steps: Array = result["steps"]
 
 	var details := PackedStringArray()
-	if context.repeat_count > 1:
-		details.append("x%d hits" % context.repeat_count)
+	if not context.delayed.is_empty():
+		details.append("%d echo%s" % [context.delayed.size(), "" if context.delayed.size() == 1 else "es"])
 	if context.target_count > 1:
 		details.append("%d targets" % context.target_count)
 	if context.radius > 0.0:
@@ -948,6 +950,7 @@ func _refresh_inventory_grid() -> void:
 	inventory_grid.add_child(empty_wrapper)
 
 func _refresh_board_grid() -> void:
+	var idle := _idle_amplifier_positions()
 	for pos in _board_buttons:
 		var button: Button = _board_buttons[pos]
 		var symbol := button.get_child(0) as PerkSymbol
@@ -964,7 +967,19 @@ func _refresh_board_grid() -> void:
 			button.flat = false
 		var board_source: Variant = _held.get("source")
 		var is_held_here: bool = board_source is Vector2i and board_source == pos
-		button.modulate = COLOR_HELD if is_held_here else COLOR_NORMAL
+		button.modulate = COLOR_HELD if is_held_here else (COLOR_IDLE if idle.has(pos) else COLOR_NORMAL)
+
+## Positions of amplifier perks (Echo, Chain, Linger) that currently do nothing because no source
+## effect comes before them in their chain — greyed out on the board so the player can see it.
+func _idle_amplifier_positions() -> Dictionary:
+	var result := {}
+	var activator := ability_controller.ability_activator
+	for placed in board.get_all_placed_perks():
+		if placed.get_definition().perk_class != PerkDefinition.PerkClass.ABILITY:
+			continue
+		for idle in activator.find_noop_perks(board, placed.position):
+			result[idle.position] = true
+	return result
 
 ## The bar still shows a translucent preview of a held perk's cost (visual-only, helps judge a
 ## placement before committing) but the byte count in memory_label does not — it only counts

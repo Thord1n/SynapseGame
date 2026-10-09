@@ -11,8 +11,13 @@ extends PerkDefinition
 func get_tooltip_extra(level: int) -> String:
 	return "\nChains: %d" % get_scaled_chains(level)
 
+## An amplifier (default per the Designer, may change): only spreads effects added earlier in
+## the chain; with none upstream it does nothing.
 func apply_effect(level: int, context: EffectContext) -> void:
 	super(level, context)
+	if not context.has_upstream_effects():
+		context.last_was_noop = true
+		return
 	context.target_count += get_scaled_chains(level)
 
 func get_scaled_chains(level: int) -> int:

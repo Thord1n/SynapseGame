@@ -17,9 +17,11 @@ func get_display_color() -> Color:
 func get_tooltip_extra(level: int) -> String:
 	return "\n%s Damage: +%d" % [element_name(element),get_scaled_damage(level)]
 
+## A source: adds its element as an effect entry (which also adds its damage), so amplifiers
+## further down the chain have something to act on.
 func apply_effect(level: int, context: EffectContext) -> void:
 	super(level, context)
-	context.damage += get_scaled_damage(level)
+	context.add_effect(id, element, get_scaled_damage(level))
 
 ## damage * Power^scaling_exponent, rounded up to the nearest integer.
 func get_scaled_damage(level: int) -> int:
