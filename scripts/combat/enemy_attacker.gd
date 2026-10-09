@@ -31,6 +31,7 @@ enum State { IDLE, TELEGRAPH }
 
 var _state := State.IDLE
 var _timer := 0.0
+var _stunned := false
 
 func _ready() -> void:
 	monitoring = true
@@ -40,7 +41,7 @@ func _ready() -> void:
 	_timer = interval
 
 func _physics_process(delta: float) -> void:
-	if not active:
+	if not active or _stunned:
 		return
 	_timer -= delta
 	if _timer > 0.0:
@@ -69,6 +70,15 @@ func strike() -> void:
 			var hit := Hit.new(damage, kind, get_parent())
 			var result: Hit.Result = body.receive_hit(hit)
 			struck.emit(hit, result)
+
+## Called by the parent Enemy when Shock stuns it: cancels any telegraph in progress (no strike
+## lands) and holds the loop until the stun ends, then starts a fresh interval.
+func set_stunned(value: bool) -> void:
+	_stunned = value
+	_state = State.IDLE
+	_timer = interval
+	if flash_target:
+		flash_target.modulate = Color(0.6, 0.8, 1.0) if value else Color(1, 1, 1)
 
 func is_telegraphing() -> bool:
 	return _state == State.TELEGRAPH

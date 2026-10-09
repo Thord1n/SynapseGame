@@ -38,11 +38,7 @@ func _ready() -> void:
 ## or null when that ability isn't on the board.
 func fire(ability_id: StringName, enemy: Enemy) -> EffectContext:
 	var target: DummyTarget = enemy.dummy_target if enemy else null
-	var context := game_gui.trigger_ability(ability_id, EVENT_LABELS.get(ability_id, String(ability_id)), target)
-	if context and enemy:
-		enemy.damage_received.emit(context.damage * context.repeat_count, enemy.dummy_target.damage_taken)
-		enemy.refresh()
-	return context
+	return game_gui.trigger_ability(ability_id, EVENT_LABELS.get(ability_id, String(ability_id)), target)
 
 func is_equipped(ability_id: StringName) -> bool:
 	return game_gui.ability_controller.find_placed(game_gui.board, ability_id) != null

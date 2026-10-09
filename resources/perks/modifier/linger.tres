@@ -6,6 +6,7 @@
 script = ExtResource("1")
 radius = 2.0
 max_radius = 10.0
+needs_upstream_effect = true
 id = &"linger"
 display_name = "Linger"
 description = "Lingering damage-over-time effect. "
