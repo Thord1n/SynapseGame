@@ -13,9 +13,8 @@ extends Node
 ## on_block, on_dodge_start and hurt are left unrouted for now (Designer to confirm whether a
 ## plain block should fire the Guard chain too).
 ##
-## If an ability isn't on the board, its event still happens physically but adds nothing —
-## except attack_landed, which falls back to the swing's flat placeholder damage so a hit always
-## does something.
+## Also owns the "is it equipped" rule: it points PlayerController.ability_gate at the board,
+## so a move whose ability perk isn't placed doesn't happen at all (Thomas: abilities are perks).
 
 const EVENT_LABELS := {
 	&"normal_attack": "Normal Attack hit",
@@ -29,6 +28,7 @@ const EVENT_LABELS := {
 @export var game_gui: GameGui
 
 func _ready() -> void:
+	player.ability_gate = is_equipped
 	player.attack_landed.connect(_on_attack_landed)
 	player.parried.connect(func(hit: Hit): fire(&"guard", _enemy_of(hit)))
 	player.dodged_through.connect(func(hit: Hit): fire(&"dash", _enemy_of(hit)))
@@ -44,9 +44,11 @@ func fire(ability_id: StringName, enemy: Enemy) -> EffectContext:
 		enemy.refresh()
 	return context
 
+func is_equipped(ability_id: StringName) -> bool:
+	return game_gui.ability_controller.find_placed(game_gui.board, ability_id) != null
+
 func _on_attack_landed(enemy: Enemy, ability_id: StringName) -> void:
-	if fire(ability_id, enemy) == null:
-		enemy.take_damage(PlayerController.PLACEHOLDER_MELEE_DAMAGE)
+	fire(ability_id, enemy)
 
 static func _enemy_of(hit: Hit) -> Enemy:
 	return hit.source as Enemy

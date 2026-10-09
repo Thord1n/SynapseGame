@@ -95,6 +95,15 @@ var _stunned_until := -INF
 var _dodge_started_at := -INF
 var _dodge_direction := 1
 var _special_ready_at := -INF
+
+## The shared "is this ability equipped" check (Thomas: abilities are perks — no perk on the
+## grid, no move). Takes an ability perk id (&"jump", &"guard", &"dash", &"normal_attack",
+## &"special_attack"). TriggerRouter points it at the SynapseGrid board; the default allows
+## everything so scenes without a board (unit-style tests) still move.
+var ability_gate: Callable = func(_ability_id: StringName) -> bool: return true
+
+func has_ability(ability_id: StringName) -> bool:
+	return ability_gate.call(ability_id)
 var _swing_ability: StringName = &"normal_attack"
 
 ## Set externally by main.gd — this node's own way to check "is the perk-board menu open" so
@@ -143,7 +152,7 @@ func move(delta: float) -> void:
 ## Wired to the "Jump" action in _unhandled_input() below, gated on `menu` being closed.
 ## Emits jump_started at takeoff, which TriggerRouter turns into the Jump chain.
 func jump() -> void:
-	if is_on_floor() and not is_stunned():
+	if is_on_floor() and not is_stunned() and has_ability(&"jump"):
 		velocity.y = JUMP_VELOCITY
 		jump_started.emit()
 
@@ -185,7 +194,7 @@ func normal_attack() -> void:
 ## special_attack_cooldown (the Designer's plain cooldown, no resource cost). Returns false while
 ## cooling down, stunned or dodging.
 func special_attack() -> bool:
-	if _time < _special_ready_at or is_stunned() or is_dodging():
+	if _time < _special_ready_at or is_stunned() or is_dodging() or not has_ability(&"special_attack"):
 		return false
 	_special_ready_at = _time + special_attack_cooldown
 	_swing(&"special_attack")
@@ -195,7 +204,7 @@ func special_attack_cooldown_left() -> float:
 	return maxf(0.0, _special_ready_at - _time)
 
 func _swing(ability_id: StringName) -> void:
-	if is_stunned() or is_dodging():
+	if is_stunned() or is_dodging() or not has_ability(ability_id):
 		return
 	_swing_ability = ability_id
 	hitbox.position.x = abs(hitbox.position.x) * facing_direction
@@ -207,7 +216,7 @@ func _swing(ability_id: StringName) -> void:
 ## always available; the grid's Dash chain fires when a hit is dodged through (dodged_through). Returns false if it couldn't start (cooldown, stunned,
 ## already dodging).
 func dash() -> bool:
-	if is_dodging() or is_stunned():
+	if is_dodging() or is_stunned() or not has_ability(&"dash"):
 		return false
 	if _time < _dodge_started_at + dodge_duration + dodge_cooldown:
 		return false
@@ -241,7 +250,7 @@ func block(active: bool) -> void:
 	if active == _is_blocking:
 		return
 	if active:
-		if is_stunned() or is_dodging():
+		if is_stunned() or is_dodging() or not has_ability(&"guard"):
 			return
 		_block_pressed_at = _time
 	else:

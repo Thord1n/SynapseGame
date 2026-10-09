@@ -22,9 +22,25 @@ func _ready() -> void:
 
 	_check(not game_gui.trigger_on_keypress, "main.tscn resolves chains on events, not raw keypresses")
 
-	# --- No Normal Attack on the board: a landed swing falls back to the flat placeholder.
+	# --- Starting loadout: Memory slotted, core moves already on the grid.
+	_check(game_gui.memory_system.slotted_perk != null, "starting loadout slots a Memory perk")
+	for id in [&"jump", &"normal_attack", &"guard", &"dash"]:
+		_check(router.is_equipped(id), "starting loadout places %s" % id)
+	_check(game_gui.memory_system.get_used(game_gui.board) <= game_gui.memory_system.get_capacity(),
+		"starting loadout fits in memory")
+
+	# --- Abilities are perks: take them off the grid and the moves stop working.
+	_clear_board()
+	await _frames(10)
 	var dealt := await _swing_and_measure(&"normal_attack")
-	_check(is_equal_approx(dealt, PlayerController.PLACEHOLDER_MELEE_DAMAGE), "unplaced Normal Attack falls back to placeholder damage (%s)" % dealt)
+	_check(dealt == 0.0, "no Normal Attack perk: the swing doesn't happen")
+	player.jump()
+	await _frames(3)
+	_check(player.is_on_floor(), "no Jump perk: can't jump")
+	_check(not player.dash(), "no Dash perk: can't dodge")
+	player.block(true)
+	_check(not player.is_blocking(), "no Guard perk: can't block")
+	_check(not player.special_attack(), "no Special Attack perk: can't use it")
 
 	# --- Normal Attack -> Fire on the board: the landed swing deals the chain's damage.
 	_place(&"normal_attack", Vector2i(2, 0), GridDirection.Value.EAST, -1)
@@ -48,7 +64,7 @@ func _ready() -> void:
 	# --- Parry fires the Guard chain at the attacker.
 	var before := enemy.dummy_target.damage_taken
 	_parry_hit_from(enemy)
-	_check(is_equal_approx(enemy.dummy_target.damage_taken, before), "no Guard on the board: a parry adds nothing")
+	_check(is_equal_approx(enemy.dummy_target.damage_taken, before), "no Guard on the board: Block does nothing, so nothing fires")
 	_place(&"guard", Vector2i(2, 2), GridDirection.Value.EAST, -1)
 	_place(&"shock", Vector2i(3, 2), GridDirection.Value.EAST, GridDirection.Value.WEST)
 	var guard_expected := router.fire(&"guard", null).damage
@@ -98,6 +114,10 @@ func _swing_and_measure(ability_id: StringName) -> float:
 		player.normal_attack()
 	await _frames(15)
 	return enemy.dummy_target.damage_taken - before
+
+func _clear_board() -> void:
+	for placed in game_gui.board.get_all_placed_perks():
+		game_gui.inventory.add_perk(game_gui.board.remove_perk(placed.position))
 
 func _parry_hit_from(source: Enemy) -> void:
 	player.block(false)
