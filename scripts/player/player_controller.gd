@@ -159,10 +159,14 @@ func _require(ability_id: StringName) -> bool:
 var _swing_ability: StringName = &"normal_attack"
 
 @onready var hitbox: Area2D = $AttackHitbox_Area2D
+## On-screen swing: a translucent slash drawn over the hitbox while it's active, tinted per move.
+var swing_visual: Polygon2D
+const SWING_COLORS := {&"normal_attack": Color(1, 1, 1, 0.55), &"special_attack": Color(1, 0.6, 0.15, 0.65)}
 
 func _ready() -> void:
 	add_to_group(&"player")
 	hitbox.area_entered.connect(_on_hitbox_area_entered)
+	_build_swing_visual()
 	health = max_health
 	guard = max_guard
 	spawn_position = global_position
@@ -303,8 +307,10 @@ func _swing(ability_id: StringName) -> void:
 		return
 	_swing_ability = ability_id
 	_swing_until = _time + swing_duration
-	hitbox.position.x = abs(hitbox.position.x) * facing_direction
+	_face_hitbox()
 	hitbox.monitoring = true
+	swing_visual.color = SWING_COLORS.get(ability_id, SWING_COLORS[&"normal_attack"])
+	swing_visual.visible = true
 
 func is_swinging() -> bool:
 	return _time < _swing_until
@@ -312,6 +318,44 @@ func is_swinging() -> bool:
 func _end_swing_if_done() -> void:
 	if hitbox.monitoring and not is_swinging():
 		hitbox.monitoring = false
+	if not hitbox.monitoring:
+		swing_visual.visible = false
+	else:
+		_face_hitbox() # turning mid-swing turns the swing with you
+		swing_visual.modulate.a = clampf((_swing_until - _time) / swing_duration, 0.0, 1.0)
+
+## Mirrors the hitbox's shapes (they sit offset from the Area2D, not the Area2D itself) and the
+## swing visual onto the facing side.
+func _face_hitbox() -> void:
+	for child in hitbox.get_children():
+		if child is CollisionShape2D:
+			child.position.x = absf(child.position.x) * facing_direction
+	swing_visual.scale.x = facing_direction
+
+## A crescent covering the hitbox's reach, built from its first shape's bounds.
+func _build_swing_visual() -> void:
+	swing_visual = Polygon2D.new()
+	swing_visual.name = "SwingVisual"
+	swing_visual.visible = false
+	var reach := Rect2(Vector2(30, -60), Vector2(165, 64))
+	for child in hitbox.get_children():
+		if child is CollisionShape2D and child.shape:
+			var r: Rect2 = child.shape.get_rect()
+			r = Transform2D(child.rotation, Vector2(absf(child.position.x), child.position.y)) * r
+			reach = r
+			break
+	var points := PackedVector2Array()
+	var center := Vector2(reach.position.x, reach.get_center().y)
+	var rx := reach.size.x
+	var ry := reach.size.y * 0.5
+	for i in range(13): # outer edge, top to bottom
+		var a := lerpf(-PI / 2, PI / 2, i / 12.0)
+		points.append(center + Vector2(cos(a) * rx, sin(a) * ry))
+	for i in range(12, -1, -1): # inner edge back up: thinner crescent
+		var a := lerpf(-PI / 2, PI / 2, i / 12.0)
+		points.append(center + Vector2(cos(a) * rx * 0.55, sin(a) * ry * 0.7))
+	swing_visual.polygon = points
+	hitbox.add_child(swing_visual)
 
 ## The dodge. Per the Designer, Dash IS the dodge: a flat dash (no gravity) in the held
 ## direction, or facing if none, with i-frames; the grid's Dash chain fires when a hit is
