@@ -26,13 +26,13 @@ func _ready() -> void:
 
 	_check(not game_gui.trigger_on_keypress, "main.tscn resolves chains on events, not raw keypresses")
 
-	# --- Starting loadout: level-2 Memory slotted, the five moves on the grid at 1 byte each.
-	_check(game_gui.memory_system.slotted_perk != null and game_gui.memory_system.slotted_perk.level == 2,
-		"starting loadout slots a level-2 Memory perk")
+	# --- Starting loadout: level-3 Memory slotted, the five moves on the grid at 1 byte each.
+	_check(game_gui.memory_system.slotted_perk != null and game_gui.memory_system.slotted_perk.level == 3,
+		"starting loadout slots a level-3 Memory perk")
 	for id in [&"jump", &"normal_attack", &"special_attack", &"block", &"dash"]:
 		_check(router.is_equipped(id), "starting loadout places %s" % id)
-	_check(game_gui.memory_system.get_used(game_gui.board) == 5 and game_gui.memory_system.get_capacity() == 8,
-		"5 abilities use 5 of 8 bytes (%d / %d)" % [game_gui.memory_system.get_used(game_gui.board), game_gui.memory_system.get_capacity()])
+	_check(game_gui.memory_system.get_used(game_gui.board) == 5 and game_gui.memory_system.get_capacity() == 16,
+		"5 abilities use 5 of 16 bytes (%d / %d)" % [game_gui.memory_system.get_used(game_gui.board), game_gui.memory_system.get_capacity()])
 	_check(is_equal_approx(player.max_guard, 100.0), "level-1 Block gives max Guard 100 (%s)" % player.max_guard)
 
 	# --- The grid is live: with it open, moves still work.

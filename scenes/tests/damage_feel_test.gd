@@ -46,6 +46,29 @@ func _ready() -> void:
 	enemy.dummy_target.apply_effect_entry({"id": &"fire", "element": ElementalPerkDefinition.Element.FIRE, "damage": 5.0, "strength": 1.0})
 	_check(_floating_labels() == labels_before + 1, "an element tag pops up for Fire")
 
+	# Facing left swings left, and the swing is drawn on screen.
+	var player: PlayerController = $Main/World/Player
+	var hits := [0]
+	enemy.damage_received.connect(func(_a, _t): hits[0] += 1)
+	enemy.position = player.position + Vector2(-110, -20)
+	await _frames(3)
+	player.facing_direction = -1
+	player.normal_attack()
+	_check(player.swing_visual.visible and player.swing_visual.scale.x == -1.0, "the swing is shown, on the left")
+	await _frames(4)
+	_check(hits[0] > 0, "facing left hits an enemy on the left")
+	await get_tree().create_timer(player.swing_duration + 0.1).timeout
+	_check(not player.swing_visual.visible, "the swing visual hides when the swing ends")
+	hits[0] = 0
+	player.facing_direction = 1
+	player.normal_attack()
+	await _frames(4)
+	_check(hits[0] == 0 and player.swing_visual.scale.x == 1.0, "facing right misses the enemy behind")
+	_check(player.facing_arrow.visible and player.facing_arrow.scale.x == 1.0, "the facing arrow points right")
+	player.facing_direction = -1
+	await _frames(2)
+	_check(player.facing_arrow.scale.x == -1.0, "the facing arrow flips left")
+
 	print("Result: %d passed, %d failed" % [_pass_count, _fail_count])
 	get_tree().quit()
 

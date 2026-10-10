@@ -26,9 +26,6 @@ extends CharacterBody2D
 ## The `attack_landed`/`parried`/`blocked`/`dodged_through`/`hurt`/`dodge_started`/`jump_started`
 ## signals are the grid's trigger events (on_hit, on_parry, ...); TriggerRouter listens to them.
 
-const MOVE_SPEED := 200.0
-const JUMP_VELOCITY := -400.0
-const GRAVITY := 980.0
 ## Flat placeholder amount the melee hitbox deals directly (see _on_hitbox_area_entered) — not
 ## routed through the perk system yet. TODO: the "real" version of this reuses AbilityController
 ## against the Normal_attack perk chain the same way game_gui.gd's own trigger does, once this
@@ -56,6 +53,39 @@ signal ability_missing(ability_id: StringName)
 ## point right after this fires (see _die).
 signal died
 
+## Movement feel (Designer's design/movement-feel-spec.md, Phase 1: Nine Sols is mostly about
+## movement). All first guesses, tuned by feel. Jump and Dash features need their perks.
+@export_group("Run")
+@export var run_speed: float = 300.0
+## Seconds from standing to full speed, and from full speed to stopped with no input.
+@export var accel_time: float = 0.06
+@export var decel_time: float = 0.05
+## Fraction of ground acceleration available in the air.
+@export_range(0.0, 1.0) var air_control: float = 0.85
+
+@export_group("Jump")
+@export var jump_velocity: float = -460.0
+@export var gravity_rising: float = 980.0
+@export var gravity_falling: float = 1550.0
+## Releasing Jump while rising multiplies upward speed by this (tap = short hop).
+@export_range(0.0, 1.0) var jump_cut: float = 0.5
+## Near the apex (|vertical speed| under apex_speed) gravity is scaled by apex_gravity_scale.
+@export var apex_speed: float = 60.0
+@export var apex_gravity_scale: float = 0.5
+@export var terminal_fall_speed: float = 700.0
+## Can still jump this long after walking off a ledge.
+@export var coyote_time: float = 0.10
+## A Jump press this long before landing still jumps.
+@export var jump_buffer: float = 0.12
+
+@export_group("Attack")
+## How long the melee hitbox stays on per swing.
+@export var swing_duration: float = 0.15
+## Horizontal speed multiplier while swinging (attacks don't stop the player).
+@export_range(0.0, 1.0) var swing_move_scale: float = 0.6
+## An attack pressed this long before the current swing ends chains into the next one.
+@export var attack_buffer: float = 0.1
+
 @export_group("Health")
 @export var max_health: float = 100.0
 
@@ -75,12 +105,16 @@ signal died
 @export var special_attack_cooldown: float = 3.0
 
 @export_group("Dodge")
-@export var dodge_distance: float = 120.0
-@export var dodge_duration: float = 0.25
+@export var dodge_distance: float = 150.0
+@export var dodge_duration: float = 0.22
 ## I-frames run from iframe_start to iframe_end seconds into the dodge.
 @export var iframe_start: float = 0.05
 @export var iframe_end: float = 0.20
 @export var dodge_cooldown: float = 0.35
+## A Dash press this long before the dodge is available again still dodges.
+@export var dodge_buffer: float = 0.1
+## Dashes allowed per airtime (reset on landing). 0 = ground only.
+@export var air_dashes: int = 1
 
 var _is_blocking := false
 var facing_direction := 1  # -1 left, 1 right
@@ -98,6 +132,13 @@ var _stunned_until := -INF
 var _dodge_started_at := -INF
 var _dodge_direction := 1
 var _special_ready_at := -INF
+var _last_on_floor_at := -INF
+var _jump_pressed_at := -INF
+var _dash_pressed_at := -INF
+var _air_dashes_used := 0
+var _swing_until := -INF
+var _attack_pressed_at := -INF
+var _buffered_attack: StringName = &""
 
 ## The shared "is this ability equipped" check (Thomas: abilities are perks — no perk on the
 ## grid, no move). Takes an ability perk id (&"jump", &"block", &"dash", &"normal_attack",
@@ -118,50 +159,101 @@ func _require(ability_id: StringName) -> bool:
 var _swing_ability: StringName = &"normal_attack"
 
 @onready var hitbox: Area2D = $AttackHitbox_Area2D
+## On-screen swing: a translucent slash drawn over the hitbox while it's active, tinted per move.
+var swing_visual: Polygon2D
+## Debug: a small arrow over the player's head pointing along facing_direction.
+@export var show_facing_arrow := true
+var facing_arrow: Polygon2D
+const SWING_COLORS := {&"normal_attack": Color(1, 1, 1, 0.55), &"special_attack": Color(1, 0.6, 0.15, 0.65)}
 
 func _ready() -> void:
 	add_to_group(&"player")
 	hitbox.area_entered.connect(_on_hitbox_area_entered)
+	_build_swing_visual()
+	_build_facing_arrow()
 	health = max_health
 	guard = max_guard
 	spawn_position = global_position
 
 func _physics_process(delta: float) -> void:
 	_time += delta
+	facing_arrow.scale.x = facing_direction
 	if _is_blocking and not has_ability(&"block"):
 		block(false) # Block taken off the grid mid-block
 	_regen_guard(delta)
+	if is_on_floor() and velocity.y >= 0.0: # not the frame we just jumped from
+		_last_on_floor_at = _time
+		_air_dashes_used = 0
+	_end_swing_if_done()
+	_run_buffered_inputs()
 	if is_dodging():
 		_dodge_step(delta)
 	elif is_stunned():
 		velocity.x = 0.0
-		if not is_on_floor():
-			velocity.y += GRAVITY * delta
+		_apply_gravity(delta)
 		move_and_slide()
 	else:
 		move(delta)
 
-## Reads project.godot's real Left/Right actions (added directly in the editor — no
-## keyboard-only Up/Down equivalent is read here, since nothing in this script uses vertical
-## movement input yet) and applies gravity. get_axis() works the same regardless of whether an
-## action is bound to plain keys (as Left/Right currently are) or an analog stick.
+## Reads project.godot's Left/Right actions, accelerating toward run_speed (accel_time /
+## decel_time, scaled by air_control in the air and swing_move_scale mid-swing), then applies
+## gravity. get_axis() works for keys and analog sticks alike.
 func move(delta: float) -> void:
-	if not is_on_floor():
-		velocity.y += GRAVITY * delta
 	var direction := Input.get_axis(&"Left", &"Right")
-	
 	if direction != 0:
-		facing_direction = sign(direction)
-		
-	velocity.x = direction * MOVE_SPEED
+		facing_direction = signi(int(signf(direction)))
+	var target := direction * run_speed * (swing_move_scale if is_swinging() else 1.0)
+	var step := run_speed / (accel_time if direction != 0 else decel_time) * delta
+	if not is_on_floor():
+		step *= air_control
+	velocity.x = move_toward(velocity.x, target, step)
+	_apply_gravity(delta)
 	move_and_slide()
 
-## Wired to the "Jump" action in _unhandled_input() below.
+## Rising and falling gravity differ (falls are faster), with a float near the apex and a
+## capped fall speed.
+func _apply_gravity(delta: float) -> void:
+	if is_on_floor():
+		return
+	var g := gravity_rising if velocity.y < 0.0 else gravity_falling
+	if absf(velocity.y) < apex_speed:
+		g *= apex_gravity_scale
+	velocity.y = minf(velocity.y + g * delta, terminal_fall_speed)
+
+## Wired to the "Jump" action in _unhandled_input() below. Jumps on the floor or within
+## coyote_time of leaving it; otherwise the press is buffered for jump_buffer seconds.
 ## Emits jump_started at takeoff, which TriggerRouter turns into the Jump chain.
 func jump() -> void:
-	if is_on_floor() and not is_stunned() and _require(&"jump"):
-		velocity.y = JUMP_VELOCITY
-		jump_started.emit()
+	if not _require(&"jump"):
+		return
+	_jump_pressed_at = _time
+	_try_buffered_jump()
+
+func can_jump() -> bool:
+	return not is_stunned() and (is_on_floor() or _time - _last_on_floor_at <= coyote_time)
+
+func _try_buffered_jump() -> void:
+	if _time - _jump_pressed_at > jump_buffer or not can_jump() or not has_ability(&"jump"):
+		return
+	_jump_pressed_at = -INF
+	_last_on_floor_at = -INF # no second coyote jump
+	velocity.y = jump_velocity
+	jump_started.emit()
+
+## Releasing Jump while rising cuts the jump short (variable jump height).
+func release_jump() -> void:
+	if velocity.y < 0.0:
+		velocity.y *= jump_cut
+
+func _run_buffered_inputs() -> void:
+	_try_buffered_jump()
+	if _time - _dash_pressed_at <= dodge_buffer and _can_dash() and has_ability(&"dash"):
+		_start_dash()
+	if _buffered_attack != &"" and not is_swinging():
+		var id := _buffered_attack
+		_buffered_attack = &""
+		if _time - _attack_pressed_at <= attack_buffer:
+			_swing(id)
 
 ## Not gated on the perk-board menu: the grid is live (Thomas), so every move keeps working
 ## while it's open.
@@ -172,6 +264,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		block(false)
 	elif event.is_action_pressed(&"Jump"):
 		jump()
+	elif event.is_action_released(&"Jump"):
+		release_jump()
 	elif event.is_action_pressed(&"Dash"):
 		dash()
 	elif event.is_action_pressed(&"Normal_attack"):
@@ -208,28 +302,108 @@ func special_attack() -> bool:
 func special_attack_cooldown_left() -> float:
 	return maxf(0.0, _special_ready_at - _time)
 
+## A swing pressed mid-swing is buffered (attack_buffer) and chains when this one ends.
 func _swing(ability_id: StringName) -> void:
 	if is_stunned() or is_dodging() or not _require(ability_id):
 		return
+	if is_swinging():
+		_buffered_attack = ability_id
+		_attack_pressed_at = _time
+		return
 	_swing_ability = ability_id
-	hitbox.position.x = abs(hitbox.position.x) * facing_direction
+	_swing_until = _time + swing_duration
+	_face_hitbox()
 	hitbox.monitoring = true
-	await get_tree().create_timer(0.15).timeout
-	hitbox.monitoring = false
+	swing_visual.color = SWING_COLORS.get(ability_id, SWING_COLORS[&"normal_attack"])
+	swing_visual.visible = true
 
-## The dodge. Per the Designer, Dash IS the dodge: this is the physical movement + i-frames,
-## always available; the grid's Dash chain fires when a hit is dodged through (dodged_through). Returns false if it couldn't start (cooldown, stunned,
-## already dodging).
+func is_swinging() -> bool:
+	return _time < _swing_until
+
+func _end_swing_if_done() -> void:
+	if hitbox.monitoring and not is_swinging():
+		hitbox.monitoring = false
+	if not hitbox.monitoring:
+		swing_visual.visible = false
+	else:
+		_face_hitbox() # turning mid-swing turns the swing with you
+		swing_visual.modulate.a = clampf((_swing_until - _time) / swing_duration, 0.0, 1.0)
+
+## Mirrors the hitbox's shapes (they sit offset from the Area2D, not the Area2D itself) and the
+## swing visual onto the facing side.
+func _face_hitbox() -> void:
+	for child in hitbox.get_children():
+		if child is CollisionShape2D:
+			child.position.x = absf(child.position.x) * facing_direction
+	swing_visual.scale.x = facing_direction
+
+func _build_facing_arrow() -> void:
+	facing_arrow = Polygon2D.new()
+	facing_arrow.name = "FacingArrow"
+	facing_arrow.position = Vector2(0, -100)
+	facing_arrow.color = Color(1, 0.9, 0.2, 0.9)
+	facing_arrow.polygon = PackedVector2Array([Vector2(-14, -4), Vector2(2, -4), Vector2(2, -11),
+		Vector2(16, 0), Vector2(2, 11), Vector2(2, 4), Vector2(-14, 4)])
+	facing_arrow.visible = show_facing_arrow
+	add_child(facing_arrow)
+
+## A crescent covering the hitbox's reach, built from its first shape's bounds.
+func _build_swing_visual() -> void:
+	swing_visual = Polygon2D.new()
+	swing_visual.name = "SwingVisual"
+	swing_visual.visible = false
+	var reach := Rect2(Vector2(30, -60), Vector2(165, 64))
+	for child in hitbox.get_children():
+		if child is CollisionShape2D and child.shape:
+			var r: Rect2 = child.shape.get_rect()
+			r = Transform2D(child.rotation, Vector2(absf(child.position.x), child.position.y)) * r
+			reach = r
+			break
+	var points := PackedVector2Array()
+	var center := Vector2(reach.position.x, reach.get_center().y)
+	var rx := reach.size.x
+	var ry := reach.size.y * 0.5
+	for i in range(13): # outer edge, top to bottom
+		var a := lerpf(-PI / 2, PI / 2, i / 12.0)
+		points.append(center + Vector2(cos(a) * rx, sin(a) * ry))
+	for i in range(12, -1, -1): # inner edge back up: thinner crescent
+		var a := lerpf(-PI / 2, PI / 2, i / 12.0)
+		points.append(center + Vector2(cos(a) * rx * 0.55, sin(a) * ry * 0.7))
+	swing_visual.polygon = points
+	hitbox.add_child(swing_visual)
+
+## The dodge. Per the Designer, Dash IS the dodge: a flat dash (no gravity) in the held
+## direction, or facing if none, with i-frames; the grid's Dash chain fires when a hit is
+## dodged through (dodged_through). Usable air_dashes times per airtime. Returns false if it
+## couldn't start (cooldown, stunned, already dodging, out of air dashes); a press on cooldown
+## is buffered for dodge_buffer seconds.
 func dash() -> bool:
-	if is_dodging() or is_stunned() or not _require(&"dash"):
+	if not _require(&"dash"):
+		return false
+	if not _can_dash():
+		_dash_pressed_at = _time
+		return false
+	_start_dash()
+	return true
+
+func _can_dash() -> bool:
+	if is_dodging() or is_stunned():
 		return false
 	if _time < _dodge_started_at + dodge_duration + dodge_cooldown:
 		return false
+	return (is_on_floor() and velocity.y >= 0.0) or _air_dashes_used < air_dashes
+
+func _start_dash() -> void:
+	_dash_pressed_at = -INF
+	if not (is_on_floor() and velocity.y >= 0.0):
+		_air_dashes_used += 1
 	_dodge_started_at = _time
+	var held := Input.get_axis(&"Left", &"Right")
+	if held != 0.0:
+		facing_direction = signi(int(signf(held)))
 	_dodge_direction = facing_direction
 	block(false)
 	dodge_started.emit()
-	return true
 
 func is_dodging() -> bool:
 	return _time < _dodge_started_at + dodge_duration
@@ -244,9 +418,11 @@ func is_stunned() -> bool:
 func is_blocking() -> bool:
 	return _is_blocking
 
-func _dodge_step(_delta: float) -> void:
+func _dodge_step(delta: float) -> void:
 	velocity = Vector2(_dodge_direction * dodge_distance / dodge_duration, 0.0)
 	move_and_slide()
+	if _time + delta >= _dodge_started_at + dodge_duration:
+		velocity.x = 0.0 # last step: stop cleanly, no slide
 
 ## Wired to the "Block" action in _unhandled_input() (press to start, release to stop). The
 ## press time is what receive_hit() checks against parry_window. Can't start while stunned or
