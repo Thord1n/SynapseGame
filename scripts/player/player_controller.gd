@@ -56,7 +56,7 @@ signal died
 ## Movement feel (Designer's design/movement-feel-spec.md, Phase 1: Nine Sols is mostly about
 ## movement). All first guesses, tuned by feel. Jump and Dash features need their perks.
 @export_group("Run")
-@export var run_speed: float = 260.0
+@export var run_speed: float = 300.0
 ## Seconds from standing to full speed, and from full speed to stopped with no input.
 @export var accel_time: float = 0.06
 @export var decel_time: float = 0.05
@@ -105,8 +105,8 @@ signal died
 @export var special_attack_cooldown: float = 3.0
 
 @export_group("Dodge")
-@export var dodge_distance: float = 120.0
-@export var dodge_duration: float = 0.25
+@export var dodge_distance: float = 150.0
+@export var dodge_duration: float = 0.22
 ## I-frames run from iframe_start to iframe_end seconds into the dodge.
 @export var iframe_start: float = 0.05
 @export var iframe_end: float = 0.20
