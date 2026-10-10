@@ -64,6 +64,10 @@ func _ready() -> void:
 	player.normal_attack()
 	await _frames(4)
 	_check(hits[0] == 0 and player.swing_visual.scale.x == 1.0, "facing right misses the enemy behind")
+	_check(player.facing_arrow.visible and player.facing_arrow.scale.x == 1.0, "the facing arrow points right")
+	player.facing_direction = -1
+	await _frames(2)
+	_check(player.facing_arrow.scale.x == -1.0, "the facing arrow flips left")
 
 	print("Result: %d passed, %d failed" % [_pass_count, _fail_count])
 	get_tree().quit()

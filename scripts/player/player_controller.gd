@@ -161,18 +161,23 @@ var _swing_ability: StringName = &"normal_attack"
 @onready var hitbox: Area2D = $AttackHitbox_Area2D
 ## On-screen swing: a translucent slash drawn over the hitbox while it's active, tinted per move.
 var swing_visual: Polygon2D
+## Debug: a small arrow over the player's head pointing along facing_direction.
+@export var show_facing_arrow := true
+var facing_arrow: Polygon2D
 const SWING_COLORS := {&"normal_attack": Color(1, 1, 1, 0.55), &"special_attack": Color(1, 0.6, 0.15, 0.65)}
 
 func _ready() -> void:
 	add_to_group(&"player")
 	hitbox.area_entered.connect(_on_hitbox_area_entered)
 	_build_swing_visual()
+	_build_facing_arrow()
 	health = max_health
 	guard = max_guard
 	spawn_position = global_position
 
 func _physics_process(delta: float) -> void:
 	_time += delta
+	facing_arrow.scale.x = facing_direction
 	if _is_blocking and not has_ability(&"block"):
 		block(false) # Block taken off the grid mid-block
 	_regen_guard(delta)
@@ -331,6 +336,16 @@ func _face_hitbox() -> void:
 		if child is CollisionShape2D:
 			child.position.x = absf(child.position.x) * facing_direction
 	swing_visual.scale.x = facing_direction
+
+func _build_facing_arrow() -> void:
+	facing_arrow = Polygon2D.new()
+	facing_arrow.name = "FacingArrow"
+	facing_arrow.position = Vector2(0, -100)
+	facing_arrow.color = Color(1, 0.9, 0.2, 0.9)
+	facing_arrow.polygon = PackedVector2Array([Vector2(-14, -4), Vector2(2, -4), Vector2(2, -11),
+		Vector2(16, 0), Vector2(2, 11), Vector2(2, 4), Vector2(-14, 4)])
+	facing_arrow.visible = show_facing_arrow
+	add_child(facing_arrow)
 
 ## A crescent covering the hitbox's reach, built from its first shape's bounds.
 func _build_swing_visual() -> void:
