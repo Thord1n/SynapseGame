@@ -43,10 +43,11 @@ const ABILITY_ACTIONS := {
 ## needs a destination that's on screen regardless of menu state. main.gd's on-screen combat log is that destination.
 signal ability_triggered(text: String)
 
-## Off by default so test scenes that instance game_gui.tscn on their own keep starting from a
-## bare seeded inventory. main.tscn turns it on (see _apply_starting_loadout).
-@export var starting_loadout: bool = false
-const STARTING_MEMORY_LEVEL := 2 # 8 bytes: the five moves (1 byte each) leave 3 for modifiers
+## On by default (Thomas): the game starts with every ability on the board and a level-3
+## Memory slotted (see _apply_starting_loadout). Test scenes that need a bare seeded inventory
+## turn it off.
+@export var starting_loadout: bool = true
+const STARTING_MEMORY_LEVEL := 3 # 16 bytes: the five moves (1 byte each) leave 11 for modifiers
 const STARTING_ABILITIES := {
 	&"jump": Vector2i(2, 0),
 	&"normal_attack": Vector2i(2, 1),
